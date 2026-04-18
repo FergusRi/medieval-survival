@@ -21,7 +21,13 @@ function tileHash(tx, ty) {
   h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
   return (h ^ (h >>> 16)) >>> 0;
 }
-function tileFrac(tx, ty) { return tileHash(tx, ty) / 0xFFFFFFFF; }
+function tileFrac(tx, ty)    { return tileHash(tx, ty)               / 0xFFFFFFFF; }
+function overlayFrac(tx, ty) { return tileHash(tx + 9999, ty + 7777) / 0xFFFFFFFF; }
+
+// Tuft spawn rates — sparse, like rocks
+const GRASS_TUFT_RATE  = 0.08;
+const PLAINS_TUFT_RATE = 0.06;
+const SAND_TUFT_RATE   = 0.05;
 
 // Tree density
 const PINE_DENSITY = 0.35;
@@ -100,6 +106,18 @@ function render() {
           // Interior: flat grey fill
           ctx.fillStyle = TILE_DEF[T.MOUNTAIN].colour;
           ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+        }
+        continue;
+      }
+
+      // Grass / plains / sand: flat colour base, sparse tuft on top
+      if (id === T.GRASS || id === T.PLAINS || id === T.SAND) {
+        ctx.fillStyle = def.colour;
+        ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+        const rate = id === T.GRASS ? GRASS_TUFT_RATE : id === T.PLAINS ? PLAINS_TUFT_RATE : SAND_TUFT_RATE;
+        if (overlayFrac(tx, ty) < rate) {
+          const tuft = getTileSprite(id);
+          if (tuft) ctx.drawImage(tuft, px, py, TILE_SIZE, TILE_SIZE);
         }
         continue;
       }
