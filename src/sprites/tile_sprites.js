@@ -4,27 +4,24 @@
 
 import { T } from '../world/tiles.js';
 
-const tileLoaded    = new Map(); // tileId → ImageBitmap
-const overlayLoaded = new Map(); // name   → ImageBitmap
-const treeLoaded    = new Map(); // name   → ImageBitmap
+const tileLoaded = new Map(); // tileId → ImageBitmap
+const treeLoaded = new Map(); // name   → ImageBitmap
 
-// Full ground tile sprites (opaque 32×32)
+// Full ground tile sprites (fully opaque 32×32 — no transparency tricks)
+// Grass, plains, sand are generated on their exact base colour so no
+// chroma-keying is needed and pink fringing is impossible.
 const TILE_IMAGES = {
+  [T.GRASS]:          'assets/tiles/grass.png',
+  [T.PLAINS]:         'assets/tiles/plains.png',
   [T.DIRT]:           'assets/tiles/dirt.png',
+  [T.SAND]:           'assets/tiles/sand.png',
   [T.MOUNTAIN_STONE]: 'assets/tiles/mountain_stone.png',
   [T.WATER]:          'assets/tiles/water.png',
   [T.DEEP_WATER]:     'assets/tiles/deep_water.png',
   [T.STONE]:          'assets/tiles/stone.png',
 };
 
-// Overlay sprites (transparent, drawn on top of flat colour)
-const OVERLAY_IMAGES = {
-  grass:  'assets/tiles/grass_tuft.png',
-  plains: 'assets/tiles/plains_tuft.png',
-  sand:   'assets/tiles/sand_detail.png',
-};
-
-// Tree sprites (transparent, Y-sorted pass)
+// Tree sprites (transparent PNG, Y-sorted pass)
 const TREE_IMAGES = {
   pine:  'assets/trees/tree_pine.png',   // 32×64
   stump: 'assets/trees/tree_stump.png',  // 32×32
@@ -45,19 +42,14 @@ export async function preloadSprites() {
       try { tileLoaded.set(Number(id), await loadImage(path)); }
       catch (e) { console.warn(`[sprites] Failed tile ${path}:`, e); }
     }),
-    ...Object.entries(OVERLAY_IMAGES).map(async ([name, path]) => {
-      try { overlayLoaded.set(name, await loadImage(path)); }
-      catch (e) { console.warn(`[sprites] Failed overlay ${path}:`, e); }
-    }),
     ...Object.entries(TREE_IMAGES).map(async ([name, path]) => {
       try { treeLoaded.set(name, await loadImage(path)); }
       catch (e) { console.warn(`[sprites] Failed tree ${path}:`, e); }
     }),
   ];
   await Promise.all(jobs);
-  console.log(`[sprites] Loaded ${tileLoaded.size} tiles, ${overlayLoaded.size} overlays, ${treeLoaded.size} trees`);
+  console.log(`[sprites] Loaded ${tileLoaded.size} tiles, ${treeLoaded.size} trees`);
 }
 
-export function getTileSprite(tileId)    { return tileLoaded.get(tileId)    ?? null; }
-export function getOverlaySprite(name)   { return overlayLoaded.get(name)   ?? null; }
-export function getTreeSprite(name)      { return treeLoaded.get(name)      ?? null; }
+export function getTileSprite(tileId) { return tileLoaded.get(tileId) ?? null; }
+export function getTreeSprite(name)   { return treeLoaded.get(name)   ?? null; }

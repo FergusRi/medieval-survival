@@ -11,7 +11,7 @@ import { generateMap, getTile, MAP_SIZE, TILE_SIZE, MAP_PX, MAP_SEED } from './w
 import { drawMinimap } from './ui/minimap.js';
 import { T, TILE_DEF } from './world/tiles.js';
 import {
-  preloadSprites, getTileSprite, getOverlaySprite, getTreeSprite, PINE_TILES
+  preloadSprites, getTileSprite, getTreeSprite, PINE_TILES
 } from './sprites/tile_sprites.js';
 
 // ---- Deterministic per-tile RNG ------------------------------
@@ -21,13 +21,7 @@ function tileHash(tx, ty) {
   h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
   return (h ^ (h >>> 16)) >>> 0;
 }
-function tileFrac(tx, ty)    { return tileHash(tx, ty)               / 0xFFFFFFFF; }
-function overlayFrac(tx, ty) { return tileHash(tx + 9999, ty + 7777) / 0xFFFFFFFF; }
-
-// Overlay spawn rates
-const GRASS_OVERLAY_RATE  = 0.55;
-const PLAINS_OVERLAY_RATE = 0.45;
-const SAND_OVERLAY_RATE   = 0.30;
+function tileFrac(tx, ty) { return tileHash(tx, ty) / 0xFFFFFFFF; }
 
 // Tree density
 const PINE_DENSITY = 0.35;
@@ -61,10 +55,22 @@ function render() {
 
       // STONE tile: draw grass base first, then stone sprite on top
       if (id === T.STONE) {
-        ctx.fillStyle = TILE_DEF[T.GRASS].colour;
-        ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+        const grassSprite = getTileSprite(T.GRASS);
+        if (grassSprite) {
+          ctx.drawImage(grassSprite, px, py, TILE_SIZE, TILE_SIZE);
+        } else {
+          ctx.fillStyle = TILE_DEF[T.GRASS].colour;
+          ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+        }
         const stoneSprite = getTileSprite(T.STONE);
         if (stoneSprite) ctx.drawImage(stoneSprite, px, py, TILE_SIZE, TILE_SIZE);
+        continue;
+      }
+
+      // MOUNTAIN interior: flat grey fill (no sprite)
+      if (id === T.MOUNTAIN) {
+        ctx.fillStyle = def.colour;
+        ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
         continue;
       }
 
@@ -94,31 +100,9 @@ function render() {
     ctx.stroke();
   }
 
-  // ── Pass 2: Ground overlays (grass tufts, plains tufts, sand detail) ─
-  const grassOverlay  = getOverlaySprite('grass');
-  const plainsOverlay = getOverlaySprite('plains');
-  const sandOverlay   = getOverlaySprite('sand');
-
-  for (let ty = ty0; ty < ty1; ty++) {
-    for (let tx = tx0; tx < tx1; tx++) {
-      const id = getTile(tx, ty);
-      let overlay = null;
-      let rate    = 0;
-
-      if      (id === T.GRASS    && grassOverlay)  { overlay = grassOverlay;  rate = GRASS_OVERLAY_RATE;  }
-      else if (id === T.PLAINS   && plainsOverlay) { overlay = plainsOverlay; rate = PLAINS_OVERLAY_RATE; }
-      else if (id === T.SAND     && sandOverlay)   { overlay = sandOverlay;   rate = SAND_OVERLAY_RATE;   }
-
-      if (!overlay) continue;
-      if (overlayFrac(tx, ty) >= rate) continue;
-
-      ctx.drawImage(overlay, tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-    }
-  }
-
-  // ── Pass 3: Trees — Y-sorted (painter's algorithm) ───────
-  const pineSprite  = getTreeSprite('pine');
-  const treeStartY  = Math.max(0, ty0 - 1);
+  // ── Pass 2: Trees — Y-sorted (painter's algorithm) ───────
+  const pineSprite = getTreeSprite('pine');
+  const treeStartY = Math.max(0, ty0 - 1);
 
   for (let ty = treeStartY; ty < ty1; ty++) {
     for (let tx = tx0; tx < tx1; tx++) {
@@ -149,7 +133,7 @@ async function start() {
   generateMap();
   await preloadSprites();
   startLoop(update, render);
-  console.log('[Medieval Survival] Phase 5 — sprites + stone scatter online');
+  console.log('[Medieval Survival] Phase 5 — solid tile sprites online');
 }
 
 if (document.readyState === 'loading') {
