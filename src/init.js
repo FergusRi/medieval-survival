@@ -14,8 +14,7 @@ import { preloadSprites, getTileSprite, getTreeSprite, PINE_TILES } from './spri
 import { resources } from './resources/resources.js';
 import { renderBuildings, updateGhostPos, handleBuildClick, cancelGhost, getGhostType } from './buildings/placement.js';
 import { renderConstruction } from './buildings/construction.js';
-import { initBuildPanel } from './ui/buildpanel.js';
-import { initHUD } from './ui/hud.js';
+import { initFrame, TOP_BAR_H, BOTTOM_BAR_H } from './ui/frame.js';
 import { updateCitizens, renderCitizens, spawnCitizens, citizens } from './citizens/citizen.js';
 
 // ---- Deterministic per-tile RNG ------------------------------
@@ -213,13 +212,13 @@ async function start() {
   initInput();
   generateMap();
   await preloadSprites();
-  // Centre camera on the middle of the map
+  // Centre camera on the middle of the map (account for UI bars)
   const midPx = (MAP_SIZE * TILE_SIZE) / 2;
-  camera.x = midPx - window.innerWidth  / 2;
-  camera.y = midPx - window.innerHeight / 2;
+  const gameH = window.innerHeight - TOP_BAR_H - BOTTOM_BAR_H;
+  camera.x = midPx - window.innerWidth / 2;
+  camera.y = midPx - gameH / 2;
 
-  initHUD();
-  initBuildPanel();
+  initFrame();
   setupBuildInput();
   setupCitizenSpawning();
   console.log('[Resources] Starting inventory:', JSON.stringify(resources));
