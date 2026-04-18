@@ -81,7 +81,7 @@ function setupBuildInput() {
 // ---- Building completed → spawn citizens --------------------
 function setupCitizenSpawning() {
   events.on(EV.BUILDING_COMPLETED, ({ building }) => {
-    if (building.type === 'settlement') {
+    if (building.type === 'settlement' || building.type === 'capital') {
       spawnCitizens(building, 3);
       console.log(`[Citizens] 3 citizens spawned from ${building.type} at (${building.tx},${building.ty})`);
     }
