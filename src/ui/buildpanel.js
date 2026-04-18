@@ -20,7 +20,7 @@ export function initBuildPanel() {
   btn.id = 'build-toggle';
   btn.textContent = '🔨 Build';
   btn.style.cssText = `
-    position:fixed; bottom:16px; left:16px; z-index:200;
+    position:fixed; bottom:48px; left:16px; z-index:200;
     padding:8px 16px; font-size:15px; font-weight:bold;
     background:#8b5e20; color:#fff; border:2px solid #c8a060;
     border-radius:6px; cursor:pointer;
@@ -31,7 +31,7 @@ export function initBuildPanel() {
   panel = document.createElement('div');
   panel.id = 'build-panel';
   panel.style.cssText = `
-    position:fixed; bottom:60px; left:16px; z-index:200;
+    position:fixed; bottom:100px; left:16px; z-index:200;
     width:320px; max-height:60vh; overflow-y:auto;
     background:rgba(20,15,10,0.93); color:#e8d8b0;
     border:2px solid #8b5e20; border-radius:8px;
