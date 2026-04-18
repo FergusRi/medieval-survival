@@ -13,6 +13,7 @@ import { T, TILE_DEF } from './world/tiles.js';
 import { preloadSprites, getTileSprite, getTreeSprite, PINE_TILES } from './sprites/tile_sprites.js';
 import { resources } from './resources/resources.js';
 import { renderBuildings, updateGhostPos, handleBuildClick, cancelGhost, getGhostType } from './buildings/placement.js';
+import { renderConstruction } from './buildings/construction.js';
 import { initBuildPanel } from './ui/buildpanel.js';
 
 // ---- Deterministic per-tile RNG ------------------------------
@@ -150,6 +151,7 @@ function render() {
 
   // ── Pass 3: Buildings + ghost ─────────────────────────────
   renderBuildings(ctx);
+  renderConstruction(ctx);
 
   endFrame();
   drawMinimap(getCtx());
