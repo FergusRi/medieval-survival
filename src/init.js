@@ -8,6 +8,7 @@ import { initRenderer, beginFrame, endFrame, getCtx } from './engine/renderer.js
 import { initInput, handleKeyPan } from './engine/input.js';
 import { camera } from './engine/camera.js';
 import { generateMap, getTile, MAP_SIZE, TILE_SIZE, MAP_PX } from './world/map.js';
+import { drawMinimap } from './ui/minimap.js';
 import { TILE_DEF } from './world/tiles.js';
 
 // ---- Update ---------------------------------------------------
@@ -57,6 +58,10 @@ function render() {
   }
 
   endFrame();
+
+  // Minimap overlay (screen-space, no camera transform)
+  const screenCtx = getCtx();
+  drawMinimap(screenCtx);
 }
 
 // ---- Start -------------------------------------------------
