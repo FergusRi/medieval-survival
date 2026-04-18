@@ -6,9 +6,8 @@ const sprites = new Map();
 
 const SPRITE_DEFS = {
   settlement: 'assets/buildings/settlement.jpg',
-  // more added as generated:
-  // capital:    'assets/buildings/capital.jpg',
-  // house:      'assets/buildings/house.jpg',
+  capital:    'assets/buildings/capital.jpg',
+  // house:   'assets/buildings/house.jpg',
 };
 
 export async function preloadBuildingSprites() {
