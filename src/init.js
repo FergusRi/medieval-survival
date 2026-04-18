@@ -13,7 +13,6 @@ import { T, TILE_DEF } from './world/tiles.js';
 import {
   preloadSprites, getTileSprite, getTreeSprite, PINE_TILES
 } from './sprites/tile_sprites.js';
-import { fog, FOG_UNEXPLORED, FOG_SEEN, FOG_VISIBLE, revealCircle, updateFog, VISION_RADII } from './world/fog.js';
 import { resources } from './resources/resources.js';
 
 // ---- Deterministic per-tile RNG ------------------------------
@@ -26,7 +25,6 @@ function tileHash(tx, ty) {
 function tileFrac(tx, ty)    { return tileHash(tx, ty)               / 0xFFFFFFFF; }
 function overlayFrac(tx, ty) { return tileHash(tx + 9999, ty + 7777) / 0xFFFFFFFF; }
 
-// Tuft spawn rates
 const GRASS_TUFT_RATE  = 0.08;
 const SAND_TUFT_RATE   = 0.05;
 const PINE_DENSITY     = 0.35;
@@ -41,22 +39,10 @@ function isMountainEdge(tx, ty) {
   ].some(id => !MOUNTAIN_TILES.has(id));
 }
 
-// ---- Vision sources (rebuilt each frame) ---------------------
-// For now: capital is centred on the map. Citizens/buildings will add to this later.
-const CAPITAL_TX = Math.floor(MAP_SIZE / 2);
-const CAPITAL_TY = Math.floor(MAP_SIZE / 2);
-
-function getVisionSources() {
-  return [
-    { tx: CAPITAL_TX, ty: CAPITAL_TY, radius: VISION_RADII.capital }
-  ];
-}
-
 // ---- Update ---------------------------------------------------
 function update(dt) {
   handleKeyPan(dt);
   camera.clamp(MAP_PX, MAP_PX);
-  updateFog(getVisionSources());
 }
 
 // ---- Render ---------------------------------------------------
@@ -84,7 +70,6 @@ function render() {
       const px  = tx * TILE_SIZE;
       const py  = ty * TILE_SIZE;
 
-      // STONE scatter: grass base + stone sprite on top
       if (id === T.STONE) {
         if (grassSprite) {
           ctx.drawImage(grassSprite, px, py, TILE_SIZE, TILE_SIZE);
@@ -96,7 +81,6 @@ function render() {
         continue;
       }
 
-      // MOUNTAIN tiles — edge gets stone sprite, interior gets flat grey
       if (MOUNTAIN_TILES.has(id)) {
         if (isMountainEdge(tx, ty)) {
           if (mountainStoneSprite) {
@@ -112,7 +96,6 @@ function render() {
         continue;
       }
 
-      // Grass / sand: flat colour base, sparse tuft on top
       if (id === T.GRASS || id === T.SAND) {
         ctx.fillStyle = def.colour;
         ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
@@ -124,7 +107,6 @@ function render() {
         continue;
       }
 
-      // All other tiles
       const sprite = getTileSprite(id);
       if (sprite) {
         ctx.drawImage(sprite, px, py, TILE_SIZE, TILE_SIZE);
@@ -173,21 +155,6 @@ function render() {
     }
   }
 
-  // ── Pass 3: Fog of War overlay ────────────────────────────
-  for (let ty = ty0; ty < ty1; ty++) {
-    for (let tx = tx0; tx < tx1; tx++) {
-      const f = fog[ty * MAP_SIZE + tx];
-      if (f === FOG_UNEXPLORED) {
-        ctx.fillStyle = 'rgba(0,0,0,1)';
-        ctx.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-      } else if (f === FOG_SEEN) {
-        ctx.fillStyle = 'rgba(0,0,0,0.55)';
-        ctx.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-      }
-      // FOG_VISIBLE: no overlay — tile shows fully
-    }
-  }
-
   endFrame();
   drawMinimap(getCtx());
 }
@@ -198,15 +165,9 @@ async function start() {
   initInput();
   generateMap();
   await preloadSprites();
-
-  // Phase 4: reveal capital area on game start
-  revealCircle(CAPITAL_TX, CAPITAL_TY, VISION_RADII.capital);
-
-  // Log starting resources
   console.log('[Resources] Starting inventory:', JSON.stringify(resources));
-
   startLoop(update, render);
-  console.log('[Medieval Survival] Phase 6 — Fog of War + Resource System online');
+  console.log('[Medieval Survival] Phase 6 — Resource System online');
 }
 
 if (document.readyState === 'loading') {
