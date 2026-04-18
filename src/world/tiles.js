@@ -10,7 +10,7 @@ export const T = {
   SAND:           4,
   SCRUBLAND:      5,
   FOREST:         6,
-  JUNGLE:         7,
+
   WATER:          11,
   DEEP_WATER:     12,
   MOUNTAIN:       16,  // mountain interior — flat grey colour fill
@@ -26,7 +26,7 @@ export const TILE_DEF = {
   [T.SAND]:           { walkable: true,  moveCost: 1.4, colour: '#d4b86a' },
   [T.SCRUBLAND]:      { walkable: true,  moveCost: 1.3, colour: '#9aaa55' },
   [T.FOREST]:         { walkable: true,  moveCost: 1.8, colour: '#3a6e30' },
-  [T.JUNGLE]:         { walkable: true,  moveCost: 2.2, colour: '#2a5e25' },
+
   [T.WATER]:          { walkable: false, moveCost: 0,   colour: '#4a90c4' },
   [T.DEEP_WATER]:     { walkable: false, moveCost: 0,   colour: '#2a5a9a' },
   [T.MOUNTAIN]:       { walkable: false, moveCost: 0,   colour: '#808080' },

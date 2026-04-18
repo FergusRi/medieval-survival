@@ -48,7 +48,7 @@ function whittaker(e, m, t) {
     if (m > 0.25) return T.GRASS;
     return T.SCRUBLAND;
   }
-  if (m > 0.75) return T.JUNGLE;
+  if (m > 0.75) return T.FOREST;
   if (m > 0.55) return T.FOREST;
   if (m > 0.35) return T.GRASS;
   if (m > 0.20) return T.SCRUBLAND;
