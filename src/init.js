@@ -26,6 +26,22 @@ function tileFrac(tx, ty) { return tileHash(tx, ty) / 0xFFFFFFFF; }
 // Tree density
 const PINE_DENSITY = 0.35;
 
+// Mountain tile IDs (interior + edge)
+const MOUNTAIN_TILES = new Set([T.MOUNTAIN, T.MOUNTAIN_STONE]);
+
+// Returns true if this tile is a mountain edge:
+// it is a MOUNTAIN tile AND has at least one non-mountain neighbour
+function isMountainEdge(tx, ty) {
+  if (!MOUNTAIN_TILES.has(getTile(tx, ty))) return false;
+  const neighbours = [
+    getTile(tx - 1, ty),
+    getTile(tx + 1, ty),
+    getTile(tx,     ty - 1),
+    getTile(tx,     ty + 1),
+  ];
+  return neighbours.some(id => !MOUNTAIN_TILES.has(id));
+}
+
 // ---- Update ---------------------------------------------------
 function update(dt) {
   handleKeyPan(dt);
@@ -45,6 +61,11 @@ function render() {
   const tx1 = Math.min(MAP_SIZE, Math.ceil (bottomRight.x / TILE_SIZE));
   const ty1 = Math.min(MAP_SIZE, Math.ceil (bottomRight.y / TILE_SIZE));
 
+  // Pre-fetch sprites used in the loop
+  const grassSprite        = getTileSprite(T.GRASS);
+  const stoneSprite        = getTileSprite(T.STONE);
+  const mountainStoneSprite = getTileSprite(T.MOUNTAIN_STONE);
+
   // ── Pass 1: Ground tiles ─────────────────────────────────
   for (let ty = ty0; ty < ty1; ty++) {
     for (let tx = tx0; tx < tx1; tx++) {
@@ -53,27 +74,37 @@ function render() {
       const px  = tx * TILE_SIZE;
       const py  = ty * TILE_SIZE;
 
-      // STONE tile: draw grass base first, then stone sprite on top
+      // STONE scatter: grass base + stone sprite on top
       if (id === T.STONE) {
-        const grassSprite = getTileSprite(T.GRASS);
         if (grassSprite) {
           ctx.drawImage(grassSprite, px, py, TILE_SIZE, TILE_SIZE);
         } else {
           ctx.fillStyle = TILE_DEF[T.GRASS].colour;
           ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
         }
-        const stoneSprite = getTileSprite(T.STONE);
         if (stoneSprite) ctx.drawImage(stoneSprite, px, py, TILE_SIZE, TILE_SIZE);
         continue;
       }
 
-      // MOUNTAIN interior: flat grey fill (no sprite)
-      if (id === T.MOUNTAIN) {
-        ctx.fillStyle = def.colour;
-        ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+      // MOUNTAIN tiles — edge gets stone sprite, interior gets flat grey
+      if (MOUNTAIN_TILES.has(id)) {
+        if (isMountainEdge(tx, ty)) {
+          // Edge: draw stone sprite (solid, no transparency issues)
+          if (mountainStoneSprite) {
+            ctx.drawImage(mountainStoneSprite, px, py, TILE_SIZE, TILE_SIZE);
+          } else {
+            ctx.fillStyle = TILE_DEF[T.MOUNTAIN_STONE].colour;
+            ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+          }
+        } else {
+          // Interior: flat grey fill
+          ctx.fillStyle = TILE_DEF[T.MOUNTAIN].colour;
+          ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+        }
         continue;
       }
 
+      // All other tiles
       const sprite = getTileSprite(id);
       if (sprite) {
         ctx.drawImage(sprite, px, py, TILE_SIZE, TILE_SIZE);
@@ -133,7 +164,7 @@ async function start() {
   generateMap();
   await preloadSprites();
   startLoop(update, render);
-  console.log('[Medieval Survival] Phase 5 — solid tile sprites online');
+  console.log('[Medieval Survival] Phase 5 — solid tiles + mountain edge logic online');
 }
 
 if (document.readyState === 'loading') {
