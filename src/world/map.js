@@ -27,6 +27,29 @@ export function moveCost(tx, ty) {
   return (TILE_DEF[getTile(tx, ty)] || {}).moveCost || 0;
 }
 
+// Returns true if tile is walkable AND has at least one mountain neighbour
+// Used to validate Mine building placement
+export function isMountainEdge(tx, ty) {
+  if (!isWalkable(tx, ty)) return false;
+  const MOUNTAIN_TILES = new Set([9,10,11,12,13,14]); // T.MOUNTAIN*  + T.ORE_*
+  const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+  return dirs.some(([dx,dy]) => MOUNTAIN_TILES.has(getTile(tx+dx, ty+dy)));
+}
+
+// Returns the total count of mountain tiles in a radius — used for ore yield scaling
+export function mountainMass(tx, ty, radius = 8) {
+  const MOUNTAIN_TILES = new Set([9,10,11,12,13,14]);
+  let count = 0;
+  for (let dy = -radius; dy <= radius; dy++) {
+    for (let dx = -radius; dx <= radius; dx++) {
+      if (dx*dx + dy*dy <= radius*radius) {
+        if (MOUNTAIN_TILES.has(getTile(tx+dx, ty+dy))) count++;
+      }
+    }
+  }
+  return count;
+}
+
 // ---- Whittaker biome lookup (elev 0-1, moist 0-1, temp 0-1) --
 function whittaker(e, m, t) {
   // Ocean / water
