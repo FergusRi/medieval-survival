@@ -1,5 +1,5 @@
 // ============================================================
-// init.js — Game bootstrap entry point (Phase 6)
+// init.js — Game bootstrap entry point (Phase 7)
 // ============================================================
 
 import { startLoop } from './engine/loop.js';
@@ -10,10 +10,10 @@ import { camera } from './engine/camera.js';
 import { generateMap, getTile, MAP_SIZE, TILE_SIZE, MAP_PX, MAP_SEED } from './world/map.js';
 import { drawMinimap } from './ui/minimap.js';
 import { T, TILE_DEF } from './world/tiles.js';
-import {
-  preloadSprites, getTileSprite, getTreeSprite, PINE_TILES
-} from './sprites/tile_sprites.js';
+import { preloadSprites, getTileSprite, getTreeSprite, PINE_TILES } from './sprites/tile_sprites.js';
 import { resources } from './resources/resources.js';
+import { renderBuildings, updateGhostPos, handleBuildClick, cancelGhost, getGhostType } from './buildings/placement.js';
+import { initBuildPanel } from './ui/buildpanel.js';
 
 // ---- Deterministic per-tile RNG ------------------------------
 function tileHash(tx, ty) {
@@ -25,18 +25,37 @@ function tileHash(tx, ty) {
 function tileFrac(tx, ty)    { return tileHash(tx, ty)               / 0xFFFFFFFF; }
 function overlayFrac(tx, ty) { return tileHash(tx + 9999, ty + 7777) / 0xFFFFFFFF; }
 
-const GRASS_TUFT_RATE  = 0.08;
-const SAND_TUFT_RATE   = 0.05;
-const PINE_DENSITY     = 0.35;
-
-const MOUNTAIN_TILES = new Set([T.MOUNTAIN, T.MOUNTAIN_STONE]);
+const GRASS_TUFT_RATE = 0.08;
+const SAND_TUFT_RATE  = 0.05;
+const PINE_DENSITY    = 0.35;
+const MOUNTAIN_TILES  = new Set([T.MOUNTAIN, T.MOUNTAIN_STONE]);
 
 function isMountainEdge(tx, ty) {
   if (!MOUNTAIN_TILES.has(getTile(tx, ty))) return false;
-  return [
-    getTile(tx - 1, ty), getTile(tx + 1, ty),
-    getTile(tx, ty - 1), getTile(tx, ty + 1),
-  ].some(id => !MOUNTAIN_TILES.has(id));
+  return [getTile(tx-1,ty), getTile(tx+1,ty), getTile(tx,ty-1), getTile(tx,ty+1)]
+    .some(id => !MOUNTAIN_TILES.has(id));
+}
+
+// ---- Input wiring --------------------------------------------
+function setupBuildInput() {
+  const canvas = document.getElementById('game-canvas') ?? document.querySelector('canvas');
+  if (!canvas) return;
+
+  canvas.addEventListener('mousemove', e => {
+    if (getGhostType()) updateGhostPos(e.clientX, e.clientY);
+  });
+
+  canvas.addEventListener('click', e => {
+    if (getGhostType()) {
+      updateGhostPos(e.clientX, e.clientY);
+      handleBuildClick(e.clientX, e.clientY);
+    }
+  });
+
+  canvas.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    cancelGhost();
+  });
 }
 
 // ---- Update ---------------------------------------------------
@@ -71,24 +90,16 @@ function render() {
       const py  = ty * TILE_SIZE;
 
       if (id === T.STONE) {
-        if (grassSprite) {
-          ctx.drawImage(grassSprite, px, py, TILE_SIZE, TILE_SIZE);
-        } else {
-          ctx.fillStyle = TILE_DEF[T.GRASS].colour;
-          ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-        }
+        if (grassSprite) ctx.drawImage(grassSprite, px, py, TILE_SIZE, TILE_SIZE);
+        else { ctx.fillStyle = TILE_DEF[T.GRASS].colour; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE); }
         if (stoneSprite) ctx.drawImage(stoneSprite, px, py, TILE_SIZE, TILE_SIZE);
         continue;
       }
 
       if (MOUNTAIN_TILES.has(id)) {
         if (isMountainEdge(tx, ty)) {
-          if (mountainStoneSprite) {
-            ctx.drawImage(mountainStoneSprite, px, py, TILE_SIZE, TILE_SIZE);
-          } else {
-            ctx.fillStyle = TILE_DEF[T.MOUNTAIN_STONE].colour;
-            ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-          }
+          if (mountainStoneSprite) ctx.drawImage(mountainStoneSprite, px, py, TILE_SIZE, TILE_SIZE);
+          else { ctx.fillStyle = TILE_DEF[T.MOUNTAIN_STONE].colour; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE); }
         } else {
           ctx.fillStyle = TILE_DEF[T.MOUNTAIN].colour;
           ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
@@ -108,12 +119,8 @@ function render() {
       }
 
       const sprite = getTileSprite(id);
-      if (sprite) {
-        ctx.drawImage(sprite, px, py, TILE_SIZE, TILE_SIZE);
-      } else {
-        ctx.fillStyle = def ? def.colour : '#000';
-        ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-      }
+      if (sprite) ctx.drawImage(sprite, px, py, TILE_SIZE, TILE_SIZE);
+      else { ctx.fillStyle = def ? def.colour : '#000'; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE); }
     }
   }
 
@@ -122,38 +129,27 @@ function render() {
     ctx.strokeStyle = 'rgba(0,0,0,0.12)';
     ctx.lineWidth   = 1 / camera.zoom;
     ctx.beginPath();
-    for (let tx = tx0; tx <= tx1; tx++) {
-      ctx.moveTo(tx * TILE_SIZE, ty0 * TILE_SIZE);
-      ctx.lineTo(tx * TILE_SIZE, ty1 * TILE_SIZE);
-    }
-    for (let ty = ty0; ty <= ty1; ty++) {
-      ctx.moveTo(tx0 * TILE_SIZE, ty * TILE_SIZE);
-      ctx.lineTo(tx1 * TILE_SIZE, ty * TILE_SIZE);
-    }
+    for (let tx = tx0; tx <= tx1; tx++) { ctx.moveTo(tx*TILE_SIZE, ty0*TILE_SIZE); ctx.lineTo(tx*TILE_SIZE, ty1*TILE_SIZE); }
+    for (let ty = ty0; ty <= ty1; ty++) { ctx.moveTo(tx0*TILE_SIZE, ty*TILE_SIZE); ctx.lineTo(tx1*TILE_SIZE, ty*TILE_SIZE); }
     ctx.stroke();
   }
 
-  // ── Pass 2: Trees — Y-sorted (painter's algorithm) ───────
-  const pineSprite  = getTreeSprite('pine');
-  const treeStartY  = Math.max(0, ty0 - 1);
-
+  // ── Pass 2: Trees ─────────────────────────────────────────
+  const pineSprite = getTreeSprite('pine');
+  const treeStartY = Math.max(0, ty0 - 1);
   for (let ty = treeStartY; ty < ty1; ty++) {
     for (let tx = tx0; tx < tx1; tx++) {
       const id = getTile(tx, ty);
       if (!PINE_TILES.has(id)) continue;
       if (tileFrac(tx, ty) >= PINE_DENSITY) continue;
-
-      const px = tx * TILE_SIZE;
-      const py = (ty - 1) * TILE_SIZE;
-
-      if (pineSprite) {
-        ctx.drawImage(pineSprite, px, py, TILE_SIZE, TILE_SIZE * 2);
-      } else {
-        ctx.fillStyle = '#2d5a1b';
-        ctx.fillRect(px, py + 4, TILE_SIZE, TILE_SIZE * 2 - 4);
-      }
+      const px = tx * TILE_SIZE, py = (ty - 1) * TILE_SIZE;
+      if (pineSprite) ctx.drawImage(pineSprite, px, py, TILE_SIZE, TILE_SIZE * 2);
+      else { ctx.fillStyle = '#2d5a1b'; ctx.fillRect(px, py + 4, TILE_SIZE, TILE_SIZE * 2 - 4); }
     }
   }
+
+  // ── Pass 3: Buildings + ghost ─────────────────────────────
+  renderBuildings(ctx);
 
   endFrame();
   drawMinimap(getCtx());
@@ -165,9 +161,11 @@ async function start() {
   initInput();
   generateMap();
   await preloadSprites();
+  initBuildPanel();
+  setupBuildInput();
   console.log('[Resources] Starting inventory:', JSON.stringify(resources));
   startLoop(update, render);
-  console.log('[Medieval Survival] Phase 6 — Resource System online');
+  console.log('[Medieval Survival] Phase 7 — Building Placement online');
 }
 
 if (document.readyState === 'loading') {
