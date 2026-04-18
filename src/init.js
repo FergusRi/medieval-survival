@@ -213,6 +213,11 @@ async function start() {
   initInput();
   generateMap();
   await preloadSprites();
+  // Centre camera on the middle of the map
+  const midPx = (MAP_SIZE * TILE_SIZE) / 2;
+  camera.x = midPx - window.innerWidth  / 2;
+  camera.y = midPx - window.innerHeight / 2;
+
   initHUD();
   initBuildPanel();
   setupBuildInput();
