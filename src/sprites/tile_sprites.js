@@ -12,7 +12,6 @@ const treeLoaded = new Map(); // name   → ImageBitmap
 // chroma-keying is needed and pink fringing is impossible.
 const TILE_IMAGES = {
   [T.GRASS]:          'assets/tiles/grass.png',
-  [T.PLAINS]:         'assets/tiles/plains.png',
   [T.DIRT]:           'assets/tiles/dirt.png',
   [T.SAND]:           'assets/tiles/sand.png',
   [T.MOUNTAIN_STONE]: 'assets/tiles/mountain_stone.png',

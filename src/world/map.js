@@ -40,12 +40,12 @@ function whittaker(e, m, t) {
   if (e < 0.36) return T.SAND;
   if (e > 0.82) return T.MOUNTAIN;
   if (e > 0.68) return T.MOUNTAIN_STONE;
-  if (t < 0.25) return m > 0.5 ? T.GRASS   : T.PLAINS;
-  if (t < 0.38) return m > 0.5 ? T.FOREST  : T.PLAINS;
+  if (t < 0.25) return T.GRASS;
+  if (t < 0.38) return m > 0.5 ? T.FOREST  : T.GRASS;
   if (t < 0.60) {
     if (m > 0.70) return T.FOREST;
     if (m > 0.45) return T.GRASS;
-    if (m > 0.25) return T.PLAINS;
+    if (m > 0.25) return T.GRASS;
     return T.SCRUBLAND;
   }
   if (m > 0.75) return T.JUNGLE;
@@ -96,7 +96,7 @@ export function generateMap(seed = Date.now()) {
 
   // Pass 2: scatter STONE tiles on walkable ground (~5% of GRASS/PLAINS/SCRUBLAND)
   const STONE_RATE = 0.05;
-  const STONE_ELIGIBLE = new Set([T.GRASS, T.PLAINS, T.SCRUBLAND, T.DIRT]);
+  const STONE_ELIGIBLE = new Set([T.GRASS, T.SCRUBLAND, T.DIRT]);
   for (let ty = 0; ty < MAP_SIZE; ty++) {
     for (let tx = 0; tx < MAP_SIZE; tx++) {
       if (!STONE_ELIGIBLE.has(getTile(tx, ty))) continue;

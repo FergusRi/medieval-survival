@@ -5,7 +5,7 @@
 export const T = {
   VOID:           0,
   GRASS:          1,
-  PLAINS:         2,
+
   DIRT:           3,
   SAND:           4,
   SCRUBLAND:      5,
@@ -21,7 +21,7 @@ export const T = {
 export const TILE_DEF = {
   [T.VOID]:           { walkable: false, moveCost: 0,   colour: '#0a0a0a' },
   [T.GRASS]:          { walkable: true,  moveCost: 1.0, colour: '#5a8a4a' },
-  [T.PLAINS]:         { walkable: true,  moveCost: 1.0, colour: '#8aaa44' },
+
   [T.DIRT]:           { walkable: true,  moveCost: 1.2, colour: '#a07840' },
   [T.SAND]:           { walkable: true,  moveCost: 1.4, colour: '#d4b86a' },
   [T.SCRUBLAND]:      { walkable: true,  moveCost: 1.3, colour: '#9aaa55' },
