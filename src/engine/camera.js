@@ -6,7 +6,7 @@ export const camera = {
   x: 0,        // World CSS-pixel X of viewport top-left
   y: 0,        // World CSS-pixel Y of viewport top-left
   zoom: 1.0,
-  minZoom: 0.5,
+  minZoom: 0.05,
   maxZoom: 2.5,
 
   // Screen pixel → world CSS pixel
