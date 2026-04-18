@@ -10,7 +10,11 @@ import { camera } from './engine/camera.js';
 import { generateMap, getTile, MAP_SIZE, TILE_SIZE, MAP_PX } from './world/map.js';
 import { drawMinimap } from './ui/minimap.js';
 import { TILE_DEF } from './world/tiles.js';
-import { preloadSprites, getTileSprite } from './sprites/tile_sprites.js';
+import { preloadSprites, getTileSprite, getTreeSprite, PINE_TILES } from './sprites/tile_sprites.js';
+
+// Tree sprite dimensions
+const TREE_W = 32;
+const TREE_H = 64;
 
 // ---- Update ---------------------------------------------------
 function update(dt) {
@@ -23,7 +27,7 @@ function render() {
   beginFrame();
   const ctx = getCtx();
 
-  // Viewport-culled tile render
+  // Viewport bounds in tile coords
   const topLeft     = camera.screenToWorld(0, 0);
   const bottomRight = camera.screenToWorld(window.innerWidth, window.innerHeight);
 
@@ -32,6 +36,7 @@ function render() {
   const tx1 = Math.min(MAP_SIZE, Math.ceil (bottomRight.x / TILE_SIZE));
   const ty1 = Math.min(MAP_SIZE, Math.ceil (bottomRight.y / TILE_SIZE));
 
+  // ---- Pass 1: ground tiles ------------------------------------
   for (let ty = ty0; ty < ty1; ty++) {
     for (let tx = tx0; tx < tx1; tx++) {
       const id     = getTile(tx, ty);
@@ -49,7 +54,7 @@ function render() {
     }
   }
 
-  // Thin grid lines at zoom >= 0.8
+  // ---- Grid lines at zoom >= 0.8 -------------------------------
   if (camera.zoom >= 0.8) {
     ctx.strokeStyle = 'rgba(0,0,0,0.12)';
     ctx.lineWidth   = 1 / camera.zoom;
@@ -65,6 +70,30 @@ function render() {
     ctx.stroke();
   }
 
+  // ---- Pass 2: trees (Y-sorted painter's algorithm) ------------
+  // Extend upward viewport by 1 extra tile row so trees rooted just
+  // above the screen still draw their canopy on screen
+  const pineSprite  = getTreeSprite('pine');
+  const stumpSprite = getTreeSprite('stump');
+
+  if (pineSprite || stumpSprite) {
+    const treeY0 = Math.max(0, ty0 - 1);
+    for (let ty = treeY0; ty < ty1; ty++) {
+      for (let tx = tx0; tx < tx1; tx++) {
+        const id = getTile(tx, ty);
+        if (!PINE_TILES.has(id)) continue;
+
+        const px = tx * TILE_SIZE;
+        // Tree base sits at bottom of tile; canopy extends 1 tile upward
+        const py = ty * TILE_SIZE - (TREE_H - TILE_SIZE);
+
+        if (pineSprite) {
+          ctx.drawImage(pineSprite, px, py, TREE_W, TREE_H);
+        }
+      }
+    }
+  }
+
   endFrame();
 
   // Minimap overlay (screen-space, no camera transform)
@@ -78,7 +107,7 @@ async function start() {
   generateMap();
   await preloadSprites();
   startLoop(update, render);
-  console.log('[Medieval Survival] Phase 5 — sprite system online');
+  console.log('[Medieval Survival] Phase 5 — sprites + trees online');
 }
 
 if (document.readyState === 'loading') {
