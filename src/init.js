@@ -10,26 +10,27 @@ import { camera } from './engine/camera.js';
 import { generateMap, getTile, MAP_SIZE, TILE_SIZE, MAP_PX, MAP_SEED } from './world/map.js';
 import { drawMinimap } from './ui/minimap.js';
 import { T, TILE_DEF } from './world/tiles.js';
-import { preloadSprites, getTileSprite, getTreeSprite, PINE_TILES } from './sprites/tile_sprites.js';
+import {
+  preloadSprites, getTileSprite, getOverlaySprite, getTreeSprite, PINE_TILES
+} from './sprites/tile_sprites.js';
 
-// ---- Sparse tree RNG ------------------------------------------
-// Deterministic per-tile hash — same seed → same tree pattern
+// ---- Deterministic per-tile RNG ------------------------------
 function tileHash(tx, ty) {
-  let h = MAP_SEED ^ (tx * 2246822519) ^ (ty * 3266489917);
-  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
-  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+  let h = (MAP_SEED ^ (tx * 2246822519) ^ (ty * 3266489917)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b) >>> 0;
   return (h ^ (h >>> 16)) >>> 0;
 }
+function tileFrac(tx, ty)    { return tileHash(tx, ty)               / 0xFFFFFFFF; }
+function overlayFrac(tx, ty) { return tileHash(tx + 9999, ty + 7777) / 0xFFFFFFFF; }
 
-// Returns 0.0–1.0 pseudo-random float for this tile
-function tileFrac(tx, ty) { return tileHash(tx, ty) / 0xFFFFFFFF; }
+// Overlay spawn rates
+const GRASS_OVERLAY_RATE  = 0.55;
+const PLAINS_OVERLAY_RATE = 0.45;
+const SAND_OVERLAY_RATE   = 0.30;
 
-// ~35% of FOREST/JUNGLE tiles get a tree
-const TREE_DENSITY = 0.35;
-
-function shouldSpawnTree(tx, ty) {
-  return tileFrac(tx, ty) < TREE_DENSITY;
-}
+// Tree density
+const PINE_DENSITY = 0.35;
 
 // ---- Update ---------------------------------------------------
 function update(dt) {
@@ -42,7 +43,6 @@ function render() {
   beginFrame();
   const ctx = getCtx();
 
-  // Viewport tile bounds
   const topLeft     = camera.screenToWorld(0, 0);
   const bottomRight = camera.screenToWorld(window.innerWidth, window.innerHeight);
 
@@ -51,15 +51,24 @@ function render() {
   const tx1 = Math.min(MAP_SIZE, Math.ceil (bottomRight.x / TILE_SIZE));
   const ty1 = Math.min(MAP_SIZE, Math.ceil (bottomRight.y / TILE_SIZE));
 
-  // ── Pass 1: Ground tiles ──────────────────────────────────
+  // ── Pass 1: Ground tiles ─────────────────────────────────
   for (let ty = ty0; ty < ty1; ty++) {
     for (let tx = tx0; tx < tx1; tx++) {
-      const id     = getTile(tx, ty);
-      const def    = TILE_DEF[id];
-      const sprite = getTileSprite(id);
-      const px     = tx * TILE_SIZE;
-      const py     = ty * TILE_SIZE;
+      const id  = getTile(tx, ty);
+      const def = TILE_DEF[id];
+      const px  = tx * TILE_SIZE;
+      const py  = ty * TILE_SIZE;
 
+      // STONE tile: draw grass base first, then stone sprite on top
+      if (id === T.STONE) {
+        ctx.fillStyle = TILE_DEF[T.GRASS].colour;
+        ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+        const stoneSprite = getTileSprite(T.STONE);
+        if (stoneSprite) ctx.drawImage(stoneSprite, px, py, TILE_SIZE, TILE_SIZE);
+        continue;
+      }
+
+      const sprite = getTileSprite(id);
       if (sprite) {
         ctx.drawImage(sprite, px, py, TILE_SIZE, TILE_SIZE);
       } else {
@@ -69,7 +78,7 @@ function render() {
     }
   }
 
-  // Thin grid lines at zoom >= 0.8
+  // Grid lines at zoom >= 0.8
   if (camera.zoom >= 0.8) {
     ctx.strokeStyle = 'rgba(0,0,0,0.12)';
     ctx.lineWidth   = 1 / camera.zoom;
@@ -85,28 +94,44 @@ function render() {
     ctx.stroke();
   }
 
-  // ── Pass 2: Trees — Y-sorted (painter's algorithm) ───────
-  // Iterate top→bottom so lower trees overdraw upper trees naturally
-  const pineSprite = getTreeSprite('pine');
+  // ── Pass 2: Ground overlays (grass tufts, plains tufts, sand detail) ─
+  const grassOverlay  = getOverlaySprite('grass');
+  const plainsOverlay = getOverlaySprite('plains');
+  const sandOverlay   = getOverlaySprite('sand');
 
-  // Extend viewport upward by 1 tile so trees rooted 1 row above
-  // still draw their canopy into the visible area
-  const treeStartY = Math.max(0, ty0 - 1);
+  for (let ty = ty0; ty < ty1; ty++) {
+    for (let tx = tx0; tx < tx1; tx++) {
+      const id = getTile(tx, ty);
+      let overlay = null;
+      let rate    = 0;
+
+      if      (id === T.GRASS    && grassOverlay)  { overlay = grassOverlay;  rate = GRASS_OVERLAY_RATE;  }
+      else if (id === T.PLAINS   && plainsOverlay) { overlay = plainsOverlay; rate = PLAINS_OVERLAY_RATE; }
+      else if (id === T.SAND     && sandOverlay)   { overlay = sandOverlay;   rate = SAND_OVERLAY_RATE;   }
+
+      if (!overlay) continue;
+      if (overlayFrac(tx, ty) >= rate) continue;
+
+      ctx.drawImage(overlay, tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+    }
+  }
+
+  // ── Pass 3: Trees — Y-sorted (painter's algorithm) ───────
+  const pineSprite  = getTreeSprite('pine');
+  const treeStartY  = Math.max(0, ty0 - 1);
 
   for (let ty = treeStartY; ty < ty1; ty++) {
     for (let tx = tx0; tx < tx1; tx++) {
       const id = getTile(tx, ty);
       if (!PINE_TILES.has(id)) continue;
-      if (!shouldSpawnTree(tx, ty)) continue;
+      if (tileFrac(tx, ty) >= PINE_DENSITY) continue;
 
-      // Tree base sits at bottom of tile; canopy extends 1 tile upward
       const px = tx * TILE_SIZE;
-      const py = (ty - 1) * TILE_SIZE; // top of 32×64 sprite
+      const py = (ty - 1) * TILE_SIZE;
 
       if (pineSprite) {
         ctx.drawImage(pineSprite, px, py, TILE_SIZE, TILE_SIZE * 2);
       } else {
-        // Fallback: dark green rectangle
         ctx.fillStyle = '#2d5a1b';
         ctx.fillRect(px, py + 4, TILE_SIZE, TILE_SIZE * 2 - 4);
       }
@@ -114,19 +139,17 @@ function render() {
   }
 
   endFrame();
-
-  // Minimap overlay (screen-space, no camera transform)
   drawMinimap(getCtx());
 }
 
-// ---- Start -------------------------------------------------
+// ---- Start ---------------------------------------------------
 async function start() {
   initRenderer();
   initInput();
   generateMap();
   await preloadSprites();
   startLoop(update, render);
-  console.log('[Medieval Survival] Phase 5 — sparse trees online');
+  console.log('[Medieval Survival] Phase 5 — sprites + stone scatter online');
 }
 
 if (document.readyState === 'loading') {
