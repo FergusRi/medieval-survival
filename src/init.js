@@ -1,5 +1,5 @@
 // ============================================================
-// init.js — Game bootstrap entry point (Phase 7)
+// init.js — Game bootstrap entry point (Phase 9)
 // ============================================================
 
 import { startLoop } from './engine/loop.js';
@@ -15,6 +15,7 @@ import { resources } from './resources/resources.js';
 import { renderBuildings, updateGhostPos, handleBuildClick, cancelGhost, getGhostType } from './buildings/placement.js';
 import { renderConstruction } from './buildings/construction.js';
 import { initBuildPanel } from './ui/buildpanel.js';
+import { updateCitizens, renderCitizens, spawnCitizens, citizens } from './citizens/citizen.js';
 
 // ---- Deterministic per-tile RNG ------------------------------
 function tileHash(tx, ty) {
@@ -37,13 +38,30 @@ function isMountainEdge(tx, ty) {
     .some(id => !MOUNTAIN_TILES.has(id));
 }
 
+// ---- Citizen hover name display ------------------------------
+let _hoveredCitizen = null;
+
+function getCitizenAtScreen(sx, sy) {
+  const world = camera.screenToWorld(sx, sy);
+  for (const c of citizens) {
+    const dx = world.x - c.x;
+    const dy = world.y - c.y;
+    if (Math.abs(dx) < 8 && dy > -20 && dy < 4) return c;
+  }
+  return null;
+}
+
 // ---- Input wiring --------------------------------------------
 function setupBuildInput() {
   const canvas = document.getElementById('game-canvas') ?? document.querySelector('canvas');
   if (!canvas) return;
 
   canvas.addEventListener('mousemove', e => {
-    if (getGhostType()) updateGhostPos(e.clientX, e.clientY);
+    if (getGhostType()) {
+      updateGhostPos(e.clientX, e.clientY);
+    } else {
+      _hoveredCitizen = getCitizenAtScreen(e.clientX, e.clientY);
+    }
   });
 
   canvas.addEventListener('click', e => {
@@ -59,10 +77,21 @@ function setupBuildInput() {
   });
 }
 
+// ---- Building completed → spawn citizens --------------------
+function setupCitizenSpawning() {
+  events.on(EV.BUILDING_COMPLETED, ({ building }) => {
+    if (building.type === 'settlement') {
+      spawnCitizens(building, 3);
+      console.log(`[Citizens] 3 citizens spawned from ${building.type} at (${building.tx},${building.ty})`);
+    }
+  });
+}
+
 // ---- Update ---------------------------------------------------
 function update(dt) {
   handleKeyPan(dt);
   camera.clamp(MAP_PX, MAP_PX);
+  updateCitizens(dt);
 }
 
 // ---- Render ---------------------------------------------------
@@ -152,6 +181,26 @@ function render() {
   // ── Pass 3: Buildings + ghost ─────────────────────────────
   renderBuildings(ctx);
   renderConstruction(ctx);
+  renderCitizens(ctx);
+
+  // ── Citizen name tooltip ──────────────────────────────────
+  if (_hoveredCitizen) {
+    const world = camera.worldToScreen(_hoveredCitizen.x, _hoveredCitizen.y);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0); // screen space
+    const label = _hoveredCitizen.name;
+    ctx.font = 'bold 11px sans-serif';
+    const tw = ctx.measureText(label).width;
+    const bx = world.x - tw / 2 - 4;
+    const by = world.y - 34;
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.beginPath();
+    ctx.roundRect(bx, by, tw + 8, 16, 3);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, bx + 4, by + 12);
+    ctx.restore();
+  }
 
   endFrame();
   drawMinimap(getCtx());
@@ -165,9 +214,10 @@ async function start() {
   await preloadSprites();
   initBuildPanel();
   setupBuildInput();
+  setupCitizenSpawning();
   console.log('[Resources] Starting inventory:', JSON.stringify(resources));
   startLoop(update, render);
-  console.log('[Medieval Survival] Phase 7 — Building Placement online');
+  console.log('[Medieval Survival] Phase 9 — Citizens online');
 }
 
 if (document.readyState === 'loading') {
