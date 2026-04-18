@@ -4,32 +4,52 @@
 
 import { T } from '../world/tiles.js';
 
-const loaded = new Map(); // key → ImageBitmap
-const pending = new Map(); // key → Promise
+const tileLoaded = new Map(); // tileId → ImageBitmap
+const treeLoaded = new Map(); // name   → ImageBitmap
 
-// Preload all known tile images
+// Ground tiles with sprite sheets
 const TILE_IMAGES = {
-  [T.GRASS]:       'assets/tiles/grass.png',
-  [T.DIRT]:        'assets/tiles/dirt.png',
-  // Tilled/Seeded dirt are farming states, not world tiles yet — kept for future use
+  [T.GRASS]: 'assets/tiles/grass.png',
+  [T.DIRT]:  'assets/tiles/dirt.png',
 };
 
-export async function preloadSprites() {
-  const promises = Object.entries(TILE_IMAGES).map(async ([id, path]) => {
-    try {
-      const res = await fetch(path);
-      const blob = await res.blob();
-      const bmp = await createImageBitmap(blob);
-      loaded.set(Number(id), bmp);
-    } catch (e) {
-      console.warn(`[sprites] Failed to load ${path}:`, e);
-    }
-  });
-  await Promise.all(promises);
-  console.log(`[sprites] Loaded ${loaded.size} tile sprites`);
+// Tree sprites (name → path)
+const TREE_IMAGES = {
+  pine:  'assets/trees/tree_pine.png',
+  stump: 'assets/trees/tree_stump.png',
+};
+
+// Which tile IDs can spawn pine trees
+export const PINE_TILES  = new Set([T.FOREST, T.JUNGLE]);
+export const STUMP_TILES = new Set([T.FOREST]);
+
+async function loadImage(path) {
+  const res  = await fetch(path);
+  const blob = await res.blob();
+  return createImageBitmap(blob);
 }
 
-/** Returns ImageBitmap if available, null otherwise (caller falls back to flat colour) */
-export function getTileSprite(tileId) {
-  return loaded.get(tileId) ?? null;
+export async function preloadSprites() {
+  const tileJobs = Object.entries(TILE_IMAGES).map(async ([id, path]) => {
+    try {
+      tileLoaded.set(Number(id), await loadImage(path));
+    } catch (e) {
+      console.warn(`[sprites] Failed to load tile ${path}:`, e);
+    }
+  });
+
+  const treeJobs = Object.entries(TREE_IMAGES).map(async ([name, path]) => {
+    try {
+      treeLoaded.set(name, await loadImage(path));
+    } catch (e) {
+      console.warn(`[sprites] Failed to load tree ${path}:`, e);
+    }
+  });
+
+  await Promise.all([...tileJobs, ...treeJobs]);
+  console.log(`[sprites] Loaded ${tileLoaded.size} tile + ${treeLoaded.size} tree sprites`);
 }
+
+/** Returns ImageBitmap if available, null otherwise */
+export function getTileSprite(tileId) { return tileLoaded.get(tileId) ?? null; }
+export function getTreeSprite(name)   { return treeLoaded.get(name)   ?? null; }

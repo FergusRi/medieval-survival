@@ -83,7 +83,10 @@ function whittaker(e, m, t) {
 }
 
 // ---- Map generation ------------------------------------------
+export let MAP_SEED = 0;
+
 export function generateMap(seed = Date.now()) {
+  MAP_SEED = seed;
   const rng = mulberry32(seed);
 
   // Elevation: broad continent shapes + detail
