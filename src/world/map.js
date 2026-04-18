@@ -1,13 +1,13 @@
 // ============================================================
-// map.js — 250×250 Uint16Array tile store + world state
+// map.js — 500×500 Uint16Array tile store + Whittaker biomes
 // ============================================================
 
 import { T, TILE_DEF } from './tiles.js';
 import { events, EV } from '../engine/events.js';
 
-export const MAP_SIZE  = 250;
+export const MAP_SIZE  = 500;
 export const TILE_SIZE = 32;
-export const MAP_PX    = MAP_SIZE * TILE_SIZE;
+export const MAP_PX    = MAP_SIZE * TILE_SIZE; // 16000px
 
 export const tileMap = new Uint16Array(MAP_SIZE * MAP_SIZE);
 
@@ -16,71 +16,103 @@ export function getTile(tx, ty) {
   if (tx < 0 || ty < 0 || tx >= MAP_SIZE || ty >= MAP_SIZE) return T.VOID;
   return tileMap[ty * MAP_SIZE + tx];
 }
-
 export function setTile(tx, ty, type) {
   if (tx < 0 || ty < 0 || tx >= MAP_SIZE || ty >= MAP_SIZE) return;
   tileMap[ty * MAP_SIZE + tx] = type;
 }
-
 export function isWalkable(tx, ty) {
-  const def = TILE_DEF[getTile(tx, ty)];
-  return def ? def.walkable : false;
+  return (TILE_DEF[getTile(tx, ty)] || {}).walkable || false;
+}
+export function moveCost(tx, ty) {
+  return (TILE_DEF[getTile(tx, ty)] || {}).moveCost || 0;
 }
 
-export function moveCost(tx, ty) {
-  const def = TILE_DEF[getTile(tx, ty)];
-  return def ? def.moveCost : 0;
+// ---- Whittaker biome lookup (elev 0-1, moist 0-1, temp 0-1) --
+function whittaker(e, m, t) {
+  // Ocean / water
+  if (e < 0.22) return T.DEEP_WATER;
+  if (e < 0.30) return T.WATER;
+  if (e < 0.36) return T.SAND;
+
+  // Mountain layers
+  if (e > 0.82) return T.MOUNTAIN_DEEP;
+  if (e > 0.72) return T.MOUNTAIN_STONE;
+  if (e > 0.64) return T.MOUNTAIN;
+
+  // Cold (high latitude / altitude)
+  if (t < 0.20) return e > 0.55 ? T.SNOW : T.TUNDRA;
+  if (t < 0.35) return m > 0.5  ? T.TUNDRA : T.PLAINS;
+
+  // Temperate
+  if (t < 0.60) {
+    if (m > 0.70) return T.FOREST;
+    if (m > 0.45) return T.GRASS;
+    if (m > 0.25) return T.PLAINS;
+    return T.SCRUBLAND;
+  }
+
+  // Warm / tropical
+  if (m > 0.75) return T.JUNGLE;
+  if (m > 0.55) return T.FOREST;
+  if (m > 0.35) return T.GRASS;
+  if (m > 0.20) return T.SCRUBLAND;
+  return T.SAND;
 }
 
 // ---- Map generation ------------------------------------------
-export function generateMap(seed = 12345) {
+export function generateMap(seed = 42317) {
   const rng = mulberry32(seed);
 
-  // Layer 1: elevation (large + medium + fine detail)
+  // Elevation: broad continent shapes + detail
   const elevMap = buildNoiseMap(MAP_SIZE, [
-    { scale: 0.006, amp: 1.0  },
-    { scale: 0.018, amp: 0.5  },
-    { scale: 0.045, amp: 0.25 },
-    { scale: 0.090, amp: 0.10 },
+    { scale: 0.004, amp: 1.00 },
+    { scale: 0.010, amp: 0.50 },
+    { scale: 0.025, amp: 0.25 },
+    { scale: 0.060, amp: 0.12 },
+    { scale: 0.120, amp: 0.06 },
   ], rng);
 
-  // Layer 2: moisture (for grass/dirt/forest variation)
+  // Moisture: independent slow + fast layers
   const moistMap = buildNoiseMap(MAP_SIZE, [
-    { scale: 0.010, amp: 1.0 },
-    { scale: 0.030, amp: 0.4 },
-    { scale: 0.070, amp: 0.2 },
+    { scale: 0.006, amp: 1.00 },
+    { scale: 0.018, amp: 0.50 },
+    { scale: 0.050, amp: 0.25 },
+    { scale: 0.100, amp: 0.10 },
   ], rng);
 
-  // Layer 3: ruggedness (adds rocky detail inside mountains)
-  const rugMap = buildNoiseMap(MAP_SIZE, [
-    { scale: 0.040, amp: 1.0 },
-    { scale: 0.100, amp: 0.5 },
+  // Temperature: gradient from north (cold) to south (warm) + noise
+  const tempNoise = buildNoiseMap(MAP_SIZE, [
+    { scale: 0.008, amp: 0.30 },
+    { scale: 0.030, amp: 0.15 },
   ], rng);
 
-  // ---- Classify base tiles from elevation + moisture ----------
+  // ---- Classify tiles -----------------------------------------
   for (let ty = 0; ty < MAP_SIZE; ty++) {
     for (let tx = 0; tx < MAP_SIZE; tx++) {
-      const e = elevMap[ty * MAP_SIZE + tx];
-      const m = moistMap[ty * MAP_SIZE + tx];
-
-      let tile;
-      if      (e < 0.20) tile = T.DEEP_WATER;
-      else if (e < 0.28) tile = T.WATER;
-      else if (e < 0.34) tile = T.SAND;
-      else if (e < 0.70) {
-        if      (m > 0.62) tile = T.FOREST;
-        else if (m < 0.28) tile = T.DIRT;
-        else               tile = T.GRASS;
-      }
-      else if (e < 0.76) tile = T.MOUNTAIN;        // foothills
-      else if (e < 0.87) tile = T.MOUNTAIN_STONE;  // solid stone
-      else               tile = T.MOUNTAIN_DEEP;   // deep interior
-
-      setTile(tx, ty, tile);
+      const i = ty * MAP_SIZE + tx;
+      const e = elevMap[i];
+      const m = moistMap[i];
+      // Temperature: latitude gradient (top=cold, bottom=warm) + noise
+      const latT = ty / MAP_SIZE;                // 0=north cold, 1=south warm
+      const t = Math.min(1, Math.max(0, latT * 0.7 + 0.15 + tempNoise[i] * 0.3));
+      setTile(tx, ty, whittaker(e, m, t));
     }
   }
 
-  // ---- Inland ponds (WATER with no DEEP_WATER neighbour) ------
+  // ---- Wetlands: low elev + high moisture lowlands ------------
+  for (let ty = 1; ty < MAP_SIZE - 1; ty++) {
+    for (let tx = 1; tx < MAP_SIZE - 1; tx++) {
+      const i = ty * MAP_SIZE + tx;
+      const e = elevMap[i];
+      const m = moistMap[i];
+      const cur = getTile(tx, ty);
+      if (cur === T.GRASS && e > 0.30 && e < 0.42 && m > 0.80) {
+        setTile(tx, ty, T.WETLAND);
+      }
+    }
+  }
+
+  // ---- Inland ponds -------------------------------------------
   for (let ty = 1; ty < MAP_SIZE - 1; ty++) {
     for (let tx = 1; tx < MAP_SIZE - 1; tx++) {
       if (getTile(tx, ty) !== T.WATER) continue;
@@ -91,103 +123,76 @@ export function generateMap(seed = 12345) {
     }
   }
 
-  // ---- Ore veins inside MOUNTAIN_DEEP -------------------------
-  // Each ore type seeded with small cluster noise
-  const oreCoalMap = buildNoiseMap(MAP_SIZE, [{ scale: 0.12, amp: 1.0 }, { scale: 0.25, amp: 0.5 }], rng);
-  const oreIronMap = buildNoiseMap(MAP_SIZE, [{ scale: 0.10, amp: 1.0 }, { scale: 0.22, amp: 0.5 }], rng);
-  const oreGoldMap = buildNoiseMap(MAP_SIZE, [{ scale: 0.08, amp: 1.0 }, { scale: 0.18, amp: 0.5 }], rng);
+  // ---- Ore veins inside mountains -----------------------------
+  const oreCoalMap = buildNoiseMap(MAP_SIZE, [{ scale: 0.14, amp: 1.0 }, { scale: 0.28, amp: 0.5 }], rng);
+  const oreIronMap = buildNoiseMap(MAP_SIZE, [{ scale: 0.11, amp: 1.0 }, { scale: 0.24, amp: 0.5 }], rng);
+  const oreGoldMap = buildNoiseMap(MAP_SIZE, [{ scale: 0.09, amp: 1.0 }, { scale: 0.20, amp: 0.5 }], rng);
 
   for (let ty = 0; ty < MAP_SIZE; ty++) {
     for (let tx = 0; tx < MAP_SIZE; tx++) {
       const cur = getTile(tx, ty);
       if (cur !== T.MOUNTAIN_DEEP && cur !== T.MOUNTAIN_STONE) continue;
-
       const i = ty * MAP_SIZE + tx;
-      // Gold: rarest, only deepest
-      if (cur === T.MOUNTAIN_DEEP && oreGoldMap[i] > 0.78) {
-        setTile(tx, ty, T.ORE_GOLD);
-      }
-      // Iron: mid-frequency
-      else if (oreIronMap[i] > 0.72) {
-        setTile(tx, ty, T.ORE_IRON);
-      }
-      // Coal: most common
-      else if (oreCoalMap[i] > 0.65) {
-        setTile(tx, ty, T.ORE_COAL);
-      }
+      if (cur === T.MOUNTAIN_DEEP && oreGoldMap[i] > 0.80) setTile(tx, ty, T.ORE_GOLD);
+      else if (oreIronMap[i] > 0.74)                       setTile(tx, ty, T.ORE_IRON);
+      else if (oreCoalMap[i] > 0.67)                       setTile(tx, ty, T.ORE_COAL);
     }
   }
 
-  // ---- Stone paths (winding trails through lowlands) ----------
-  for (let p = 0; p < 10; p++) {
+  // ---- Stone paths (winding lowland trails) -------------------
+  for (let p = 0; p < 18; p++) {
     let px = Math.floor(rng() * MAP_SIZE);
     let py = Math.floor(rng() * MAP_SIZE);
-    const len = 25 + Math.floor(rng() * 50);
+    const len = 30 + Math.floor(rng() * 70);
     let angle = rng() * Math.PI * 2;
     for (let s = 0; s < len; s++) {
       const ttx = Math.round(px);
       const tty = Math.round(py);
       const cur = getTile(ttx, tty);
-      if (cur === T.GRASS || cur === T.DIRT) setTile(ttx, tty, T.STONE_PATH);
-      angle += (rng() - 0.5) * 0.5;
+      if (cur === T.GRASS || cur === T.PLAINS || cur === T.DIRT) {
+        setTile(ttx, tty, T.STONE_PATH);
+      }
+      angle += (rng() - 0.5) * 0.45;
       px += Math.cos(angle);
       py += Math.sin(angle);
     }
   }
 
   events.emit(EV.MAP_LOADED, { width: MAP_SIZE, height: MAP_SIZE });
-  console.log('[map] generated');
+  console.log('[map] generated — 500×500');
 }
 
-// ---- Value noise --------------------------------------------
+// ---- Value noise (layered cosine interpolation) -------------
 function buildNoiseMap(size, layers, rng) {
   const out = new Float32Array(size * size);
-
   for (const { scale, amp } of layers) {
-    const gridSize = Math.ceil(size * scale) + 2;
-    const grid = new Float32Array(gridSize * gridSize);
+    const gs = Math.ceil(size * scale) + 2;
+    const grid = new Float32Array(gs * gs);
     for (let i = 0; i < grid.length; i++) grid[i] = rng();
-
     for (let ty = 0; ty < size; ty++) {
       for (let tx = 0; tx < size; tx++) {
-        const fx = tx * scale;
-        const fy = ty * scale;
-        const ix = Math.floor(fx);
-        const iy = Math.floor(fy);
-        const fracX = fx - ix;
-        const fracY = fy - iy;
-        const gx0 = ix     % gridSize;
-        const gx1 = (ix+1) % gridSize;
-        const gy0 = iy     % gridSize;
-        const gy1 = (iy+1) % gridSize;
-        const v00 = grid[gy0 * gridSize + gx0];
-        const v10 = grid[gy0 * gridSize + gx1];
-        const v01 = grid[gy1 * gridSize + gx0];
-        const v11 = grid[gy1 * gridSize + gx1];
-        const cx = cosInterp(fracX);
-        const cy = cosInterp(fracY);
-        const top    = v00 + cx * (v10 - v00);
-        const bottom = v01 + cx * (v11 - v01);
+        const fx = tx * scale, fy = ty * scale;
+        const ix = Math.floor(fx), iy = Math.floor(fy);
+        const cx = cosInterp(fx - ix), cy = cosInterp(fy - iy);
+        const gx0 = ix % gs, gx1 = (ix+1) % gs;
+        const gy0 = iy % gs, gy1 = (iy+1) % gs;
+        const top    = grid[gy0*gs+gx0] + cx * (grid[gy0*gs+gx1] - grid[gy0*gs+gx0]);
+        const bottom = grid[gy1*gs+gx0] + cx * (grid[gy1*gs+gx1] - grid[gy1*gs+gx0]);
         out[ty * size + tx] += (top + cy * (bottom - top)) * amp;
       }
     }
   }
-
-  // Normalise 0–1
-  let min = Infinity, max = -Infinity;
-  for (let i = 0; i < out.length; i++) {
-    if (out[i] < min) min = out[i];
-    if (out[i] > max) max = out[i];
-  }
-  const range = max - min || 1;
-  for (let i = 0; i < out.length; i++) out[i] = (out[i] - min) / range;
+  let mn = Infinity, mx = -Infinity;
+  for (let i = 0; i < out.length; i++) { if (out[i]<mn) mn=out[i]; if (out[i]>mx) mx=out[i]; }
+  const r = mx - mn || 1;
+  for (let i = 0; i < out.length; i++) out[i] = (out[i] - mn) / r;
   return out;
 }
 
 function cosInterp(t) { return (1 - Math.cos(t * Math.PI)) * 0.5; }
 
 function mulberry32(seed) {
-  return function() {
+  return () => {
     seed |= 0; seed = seed + 0x6D2B79F5 | 0;
     let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
     t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
