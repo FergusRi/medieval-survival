@@ -40,4 +40,5 @@ export const EV = {
   CROP_HARVESTED:             'CROP_HARVESTED',
   SURPRISE_ATTACK_WARNING:    'SURPRISE_ATTACK_WARNING',
   GAME_OVER:                  'GAME_OVER',
+  MAP_LOADED:                 'MAP_LOADED',
 };
