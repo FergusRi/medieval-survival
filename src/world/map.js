@@ -123,21 +123,11 @@ export function generateMap(seed = 42317) {
     }
   }
 
-  // ---- Ore veins inside mountains -----------------------------
-  const oreCoalMap = buildNoiseMap(MAP_SIZE, [{ scale: 0.14, amp: 1.0 }, { scale: 0.28, amp: 0.5 }], rng);
-  const oreIronMap = buildNoiseMap(MAP_SIZE, [{ scale: 0.11, amp: 1.0 }, { scale: 0.24, amp: 0.5 }], rng);
-  const oreGoldMap = buildNoiseMap(MAP_SIZE, [{ scale: 0.09, amp: 1.0 }, { scale: 0.20, amp: 0.5 }], rng);
-
-  for (let ty = 0; ty < MAP_SIZE; ty++) {
-    for (let tx = 0; tx < MAP_SIZE; tx++) {
-      const cur = getTile(tx, ty);
-      if (cur !== T.MOUNTAIN_DEEP && cur !== T.MOUNTAIN_STONE) continue;
-      const i = ty * MAP_SIZE + tx;
-      if (cur === T.MOUNTAIN_DEEP && oreGoldMap[i] > 0.80) setTile(tx, ty, T.ORE_GOLD);
-      else if (oreIronMap[i] > 0.74)                       setTile(tx, ty, T.ORE_IRON);
-      else if (oreCoalMap[i] > 0.67)                       setTile(tx, ty, T.ORE_COAL);
-    }
-  }
+  // ---- Ore clusters inside mountains --------------------------
+  // Small 3-8 tile blob clusters seeded inside mountain stone
+  spawnOreClusters(T.ORE_COAL, 120, 3, 8, [T.MOUNTAIN_STONE, T.MOUNTAIN_DEEP], rng);
+  spawnOreClusters(T.ORE_IRON,  70, 3, 7, [T.MOUNTAIN_STONE, T.MOUNTAIN_DEEP], rng);
+  spawnOreClusters(T.ORE_GOLD,  25, 3, 5, [T.MOUNTAIN_DEEP],                   rng);
 
   // ---- Stone paths (winding lowland trails) -------------------
   for (let p = 0; p < 18; p++) {
@@ -160,6 +150,41 @@ export function generateMap(seed = 42317) {
 
   events.emit(EV.MAP_LOADED, { width: MAP_SIZE, height: MAP_SIZE });
   console.log('[map] generated — 500×500');
+}
+
+// ---- Ore cluster spawner ------------------------------------
+// Places blob-shaped clusters of oreType inside allowed host tiles
+function spawnOreClusters(oreType, count, minSize, maxSize, hostTiles, rng) {
+  const hostSet = new Set(hostTiles);
+  let attempts = 0;
+  let placed = 0;
+  while (placed < count && attempts < count * 20) {
+    attempts++;
+    const ox = Math.floor(rng() * MAP_SIZE);
+    const oy = Math.floor(rng() * MAP_SIZE);
+    if (!hostSet.has(getTile(ox, oy))) continue;
+
+    // Grow a small blob using flood-fill style random walk
+    const size = minSize + Math.floor(rng() * (maxSize - minSize + 1));
+    const cluster = [{ x: ox, y: oy }];
+    const visited = new Set([oy * MAP_SIZE + ox]);
+
+    while (cluster.length < size) {
+      const base = cluster[Math.floor(rng() * cluster.length)];
+      const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+      const [dx, dy] = dirs[Math.floor(rng() * 4)];
+      const nx = base.x + dx;
+      const ny = base.y + dy;
+      const key = ny * MAP_SIZE + nx;
+      if (visited.has(key)) continue;
+      if (!hostSet.has(getTile(nx, ny))) continue;
+      visited.add(key);
+      cluster.push({ x: nx, y: ny });
+    }
+
+    for (const { x, y } of cluster) setTile(x, y, oreType);
+    placed++;
+  }
 }
 
 // ---- Value noise (layered cosine interpolation) -------------
