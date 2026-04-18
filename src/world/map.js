@@ -5,11 +5,10 @@
 import { T, TILE_DEF } from './tiles.js';
 import { events, EV } from '../engine/events.js';
 
-export const MAP_SIZE  = 250;          // tiles per axis
-export const TILE_SIZE = 32;           // CSS pixels per tile
-export const MAP_PX    = MAP_SIZE * TILE_SIZE; // 8000px
+export const MAP_SIZE  = 250;
+export const TILE_SIZE = 32;
+export const MAP_PX    = MAP_SIZE * TILE_SIZE;
 
-// Flat Uint16Array — index = ty * MAP_SIZE + tx
 export const tileMap = new Uint16Array(MAP_SIZE * MAP_SIZE);
 
 // ---- Accessors -----------------------------------------------
@@ -34,52 +33,76 @@ export function moveCost(tx, ty) {
 }
 
 // ---- Map generation ------------------------------------------
-export function generateMap() {
-  // Fill with grass
-  tileMap.fill(T.GRASS);
+export function generateMap(seed = 12345) {
+  const rng = mulberry32(seed);
 
-  const rng = mulberry32(12345); // deterministic seed
+  // Build layered value-noise maps
+  const elevMap  = buildNoiseMap(MAP_SIZE, [
+    { scale: 0.008, amp: 1.0 },
+    { scale: 0.020, amp: 0.5 },
+    { scale: 0.050, amp: 0.25 },
+    { scale: 0.100, amp: 0.12 },
+  ], rng);
 
-  // Scatter dirt patches
-  for (let i = 0; i < 80; i++) {
-    const cx = Math.floor(rng() * MAP_SIZE);
-    const cy = Math.floor(rng() * MAP_SIZE);
-    const r  = 2 + Math.floor(rng() * 5);
-    paintCircle(cx, cy, r, T.DIRT, rng);
+  const moistMap = buildNoiseMap(MAP_SIZE, [
+    { scale: 0.010, amp: 1.0 },
+    { scale: 0.030, amp: 0.4 },
+    { scale: 0.070, amp: 0.2 },
+  ], rng);
+
+  // Classify tiles from elevation + moisture
+  for (let ty = 0; ty < MAP_SIZE; ty++) {
+    for (let tx = 0; tx < MAP_SIZE; tx++) {
+      const e = elevMap[ty * MAP_SIZE + tx];  // 0–1
+      const m = moistMap[ty * MAP_SIZE + tx]; // 0–1
+
+      let tile;
+      if (e < 0.20)       tile = T.DEEP_WATER;
+      else if (e < 0.28)  tile = T.WATER;
+      else if (e < 0.33)  tile = T.SAND;
+      else if (e < 0.72) {
+        // Mid-range: grass vs dirt vs forest by moisture
+        if (m > 0.65)     tile = T.FOREST;
+        else if (m < 0.30) tile = T.DIRT;
+        else               tile = T.GRASS;
+      } else if (e < 0.82) tile = T.MOUNTAIN;
+      else                   tile = T.MOUNTAIN;
+
+      setTile(tx, ty, tile);
+    }
   }
 
-  // Forest clusters
-  for (let i = 0; i < 40; i++) {
-    const cx = Math.floor(rng() * MAP_SIZE);
-    const cy = Math.floor(rng() * MAP_SIZE);
-    const r  = 3 + Math.floor(rng() * 6);
-    paintCircle(cx, cy, r, T.FOREST, rng);
+  // Mark shallow-water edges as POND (decorative inland water)
+  // Any WATER tile with no DEEP_WATER neighbour becomes POND
+  for (let ty = 1; ty < MAP_SIZE - 1; ty++) {
+    for (let tx = 1; tx < MAP_SIZE - 1; tx++) {
+      if (getTile(tx, ty) !== T.WATER) continue;
+      const hasDeep = (
+        getTile(tx-1, ty) === T.DEEP_WATER ||
+        getTile(tx+1, ty) === T.DEEP_WATER ||
+        getTile(tx, ty-1) === T.DEEP_WATER ||
+        getTile(tx, ty+1) === T.DEEP_WATER
+      );
+      if (!hasDeep) setTile(tx, ty, T.POND);
+    }
   }
 
-  // Mountain ridges
-  for (let i = 0; i < 15; i++) {
-    const cx = Math.floor(rng() * MAP_SIZE);
-    const cy = Math.floor(rng() * MAP_SIZE);
-    const r  = 2 + Math.floor(rng() * 4);
-    paintCircle(cx, cy, r, T.MOUNTAIN, rng);
-  }
-
-  // Ponds (small water features)
-  for (let i = 0; i < 12; i++) {
-    const cx = Math.floor(rng() * MAP_SIZE);
-    const cy = Math.floor(rng() * MAP_SIZE);
-    const r  = 2 + Math.floor(rng() * 3);
-    paintCircle(cx, cy, r, T.POND, rng);
-    // Ring of sand around pond
-    paintRing(cx, cy, r + 1, T.SAND);
-  }
-
-  // Keep centre clear for Capital spawn (20×20 area around 125,125)
-  const cx = MAP_SIZE >> 1;
-  const cy = MAP_SIZE >> 1;
-  for (let dy = -10; dy <= 10; dy++) {
-    for (let dx = -10; dx <= 10; dx++) {
-      setTile(cx + dx, cy + dy, T.GRASS);
+  // Scatter stone paths (small natural trails through grass)
+  const numPaths = 8;
+  for (let p = 0; p < numPaths; p++) {
+    let px = Math.floor(rng() * MAP_SIZE);
+    let py = Math.floor(rng() * MAP_SIZE);
+    const len = 20 + Math.floor(rng() * 40);
+    let angle = rng() * Math.PI * 2;
+    for (let s = 0; s < len; s++) {
+      const tx = Math.round(px);
+      const ty = Math.round(py);
+      if (getTile(tx, ty) === T.GRASS || getTile(tx, ty) === T.DIRT) {
+        setTile(tx, ty, T.STONE_PATH);
+      }
+      angle += (rng() - 0.5) * 0.6;
+      px += Math.cos(angle);
+      py += Math.sin(angle);
     }
   }
 
@@ -87,24 +110,59 @@ export function generateMap() {
   console.log('[map] generated');
 }
 
-// ---- Helpers --------------------------------------------------
-function paintCircle(cx, cy, r, type, rng) {
-  for (let dy = -r; dy <= r; dy++) {
-    for (let dx = -r; dx <= r; dx++) {
-      if (dx * dx + dy * dy <= r * r + rng() * r) {
-        setTile(cx + dx, cy + dy, type);
+// ---- Value noise ---------------------------------------------
+// Each layer: smooth random grid interpolated with cosine
+function buildNoiseMap(size, layers, rng) {
+  const out = new Float32Array(size * size);
+
+  for (const { scale, amp } of layers) {
+    const gridSize = Math.ceil(size * scale) + 2;
+    // Random gradient grid
+    const grid = new Float32Array(gridSize * gridSize);
+    for (let i = 0; i < grid.length; i++) grid[i] = rng();
+
+    for (let ty = 0; ty < size; ty++) {
+      for (let tx = 0; tx < size; tx++) {
+        const fx = tx * scale;
+        const fy = ty * scale;
+        const ix = Math.floor(fx);
+        const iy = Math.floor(fy);
+        const fracX = fx - ix;
+        const fracY = fy - iy;
+
+        const gx0 = ix     % gridSize;
+        const gx1 = (ix+1) % gridSize;
+        const gy0 = iy     % gridSize;
+        const gy1 = (iy+1) % gridSize;
+
+        const v00 = grid[gy0 * gridSize + gx0];
+        const v10 = grid[gy0 * gridSize + gx1];
+        const v01 = grid[gy1 * gridSize + gx0];
+        const v11 = grid[gy1 * gridSize + gx1];
+
+        const cx = cosInterp(fracX);
+        const cy = cosInterp(fracY);
+
+        const top    = v00 + cx * (v10 - v00);
+        const bottom = v01 + cx * (v11 - v01);
+        out[ty * size + tx] += (top + cy * (bottom - top)) * amp;
       }
     }
   }
+
+  // Normalise to 0–1
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i < out.length; i++) {
+    if (out[i] < min) min = out[i];
+    if (out[i] > max) max = out[i];
+  }
+  const range = max - min || 1;
+  for (let i = 0; i < out.length; i++) out[i] = (out[i] - min) / range;
+
+  return out;
 }
 
-function paintRing(cx, cy, r, type) {
-  for (let angle = 0; angle < Math.PI * 2; angle += 0.15) {
-    const tx = Math.round(cx + Math.cos(angle) * r);
-    const ty = Math.round(cy + Math.sin(angle) * r);
-    if (getTile(tx, ty) === T.GRASS) setTile(tx, ty, type);
-  }
-}
+function cosInterp(t) { return (1 - Math.cos(t * Math.PI)) * 0.5; }
 
 // Deterministic PRNG (mulberry32)
 function mulberry32(seed) {
