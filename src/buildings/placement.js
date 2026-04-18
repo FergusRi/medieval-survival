@@ -34,17 +34,14 @@ function isValidPlacement(type, tx, ty) {
       if (occupiedTiles.has(tileKey(fx, fy))) return false;
     }
   }
-  // Tier gate: tier 2 needs 1 completed settlement; tier 3 needs forge
+  // Tier gates
   const def2 = BUILDINGS[type];
+  const completed = (t) => [...placedBuildings.values()].some(b => b.type === t && b.state === 'complete');
   if (def2.tier === 2) {
-    const hasSettlement = [...placedBuildings.values()]
-      .some(b => b.type === 'settlement' && b.state === 'complete');
-    if (!hasSettlement) return false;
+    if (!completed('settlement_hall') || !completed('forge')) return false;
   }
   if (def2.tier === 3) {
-    const hasForge = [...placedBuildings.values()]
-      .some(b => b.type === 'forge' && b.state === 'complete');
-    if (!hasForge) return false;
+    if (!completed('town_hall') || !completed('mint')) return false;
   }
   const cost = BUILDING_COSTS[type];
   if (cost && !canAfford(cost)) return false;
