@@ -44,10 +44,12 @@ let _hoveredCitizen = null;
 
 function getCitizenAtScreen(sx, sy) {
   const world = camera.screenToWorld(sx, sy);
+  // Hit radius in world px — generous to account for small citizen size
+  const HIT = 12;
   for (const c of citizens) {
     const dx = world.x - c.x;
     const dy = world.y - c.y;
-    if (Math.abs(dx) < 8 && dy > -20 && dy < 4) return c;
+    if (Math.abs(dx) < HIT && Math.abs(dy) < HIT) return c;
   }
   return null;
 }
@@ -221,20 +223,31 @@ function render() {
 
   // ── Citizen name tooltip ──────────────────────────────────
   if (_hoveredCitizen) {
-    const world = camera.worldToScreen(_hoveredCitizen.x, _hoveredCitizen.y);
+    const { x: scx, y: scy } = camera.worldToScreen(_hoveredCitizen.x, _hoveredCitizen.y);
+
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0); // screen space
+
     const label = _hoveredCitizen.name;
     ctx.font = 'bold 11px sans-serif';
     const tw = ctx.measureText(label).width;
-    const bx = world.x - tw / 2 - 4;
-    const by = world.y - 34;
-    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    const boxW = tw + 10;
+    const boxH = 17;
+    // Position above head — hat is ~14px above citizen y, push 8px more
+    const bx = Math.round(scx - boxW / 2);
+    const by = Math.round(scy - 22 * camera.zoom - boxH);
+
+    // Background pill
+    ctx.fillStyle = 'rgba(0,0,0,0.72)';
     ctx.beginPath();
-    ctx.roundRect(bx, by, tw + 8, 16, 3);
+    ctx.roundRect(bx, by, boxW, boxH, 4);
     ctx.fill();
+
+    // Name text
     ctx.fillStyle = '#fff';
-    ctx.fillText(label, bx + 4, by + 12);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, bx + 5, by + boxH / 2);
+
     ctx.restore();
   }
 
