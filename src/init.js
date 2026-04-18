@@ -54,7 +54,7 @@ function getCitizenAtScreen(sx, sy) {
 
 // ---- Input wiring --------------------------------------------
 function setupBuildInput() {
-  const canvas = document.getElementById('game-canvas') ?? document.querySelector('canvas');
+  const canvas = document.getElementById('game') ?? document.querySelector('canvas');
   if (!canvas) return;
 
   canvas.addEventListener('mousemove', e => {
