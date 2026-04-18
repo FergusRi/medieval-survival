@@ -1,5 +1,5 @@
 // ============================================================
-// init.js — Game bootstrap entry point (Phase 5)
+// init.js — Game bootstrap entry point (Phase 6)
 // ============================================================
 
 import { startLoop } from './engine/loop.js';
@@ -13,6 +13,8 @@ import { T, TILE_DEF } from './world/tiles.js';
 import {
   preloadSprites, getTileSprite, getTreeSprite, PINE_TILES
 } from './sprites/tile_sprites.js';
+import { fog, FOG_UNEXPLORED, FOG_SEEN, FOG_VISIBLE, revealCircle, updateFog, VISION_RADII } from './world/fog.js';
+import { resources } from './resources/resources.js';
 
 // ---- Deterministic per-tile RNG ------------------------------
 function tileHash(tx, ty) {
@@ -24,33 +26,37 @@ function tileHash(tx, ty) {
 function tileFrac(tx, ty)    { return tileHash(tx, ty)               / 0xFFFFFFFF; }
 function overlayFrac(tx, ty) { return tileHash(tx + 9999, ty + 7777) / 0xFFFFFFFF; }
 
-// Tuft spawn rates — sparse, like rocks
+// Tuft spawn rates
 const GRASS_TUFT_RATE  = 0.08;
 const SAND_TUFT_RATE   = 0.05;
+const PINE_DENSITY     = 0.35;
 
-// Tree density
-const PINE_DENSITY = 0.35;
-
-// Mountain tile IDs (interior + edge)
 const MOUNTAIN_TILES = new Set([T.MOUNTAIN, T.MOUNTAIN_STONE]);
 
-// Returns true if this tile is a mountain edge:
-// it is a MOUNTAIN tile AND has at least one non-mountain neighbour
 function isMountainEdge(tx, ty) {
   if (!MOUNTAIN_TILES.has(getTile(tx, ty))) return false;
-  const neighbours = [
-    getTile(tx - 1, ty),
-    getTile(tx + 1, ty),
-    getTile(tx,     ty - 1),
-    getTile(tx,     ty + 1),
+  return [
+    getTile(tx - 1, ty), getTile(tx + 1, ty),
+    getTile(tx, ty - 1), getTile(tx, ty + 1),
+  ].some(id => !MOUNTAIN_TILES.has(id));
+}
+
+// ---- Vision sources (rebuilt each frame) ---------------------
+// For now: capital is centred on the map. Citizens/buildings will add to this later.
+const CAPITAL_TX = Math.floor(MAP_SIZE / 2);
+const CAPITAL_TY = Math.floor(MAP_SIZE / 2);
+
+function getVisionSources() {
+  return [
+    { tx: CAPITAL_TX, ty: CAPITAL_TY, radius: VISION_RADII.capital }
   ];
-  return neighbours.some(id => !MOUNTAIN_TILES.has(id));
 }
 
 // ---- Update ---------------------------------------------------
 function update(dt) {
   handleKeyPan(dt);
   camera.clamp(MAP_PX, MAP_PX);
+  updateFog(getVisionSources());
 }
 
 // ---- Render ---------------------------------------------------
@@ -66,9 +72,8 @@ function render() {
   const tx1 = Math.min(MAP_SIZE, Math.ceil (bottomRight.x / TILE_SIZE));
   const ty1 = Math.min(MAP_SIZE, Math.ceil (bottomRight.y / TILE_SIZE));
 
-  // Pre-fetch sprites used in the loop
-  const grassSprite        = getTileSprite(T.GRASS);
-  const stoneSprite        = getTileSprite(T.STONE);
+  const grassSprite         = getTileSprite(T.GRASS);
+  const stoneSprite         = getTileSprite(T.STONE);
   const mountainStoneSprite = getTileSprite(T.MOUNTAIN_STONE);
 
   // ── Pass 1: Ground tiles ─────────────────────────────────
@@ -94,7 +99,6 @@ function render() {
       // MOUNTAIN tiles — edge gets stone sprite, interior gets flat grey
       if (MOUNTAIN_TILES.has(id)) {
         if (isMountainEdge(tx, ty)) {
-          // Edge: draw stone sprite (solid, no transparency issues)
           if (mountainStoneSprite) {
             ctx.drawImage(mountainStoneSprite, px, py, TILE_SIZE, TILE_SIZE);
           } else {
@@ -102,14 +106,13 @@ function render() {
             ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
           }
         } else {
-          // Interior: flat grey fill
           ctx.fillStyle = TILE_DEF[T.MOUNTAIN].colour;
           ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
         }
         continue;
       }
 
-      // Grass / plains / sand: flat colour base, sparse tuft on top
+      // Grass / sand: flat colour base, sparse tuft on top
       if (id === T.GRASS || id === T.SAND) {
         ctx.fillStyle = def.colour;
         ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
@@ -149,8 +152,8 @@ function render() {
   }
 
   // ── Pass 2: Trees — Y-sorted (painter's algorithm) ───────
-  const pineSprite = getTreeSprite('pine');
-  const treeStartY = Math.max(0, ty0 - 1);
+  const pineSprite  = getTreeSprite('pine');
+  const treeStartY  = Math.max(0, ty0 - 1);
 
   for (let ty = treeStartY; ty < ty1; ty++) {
     for (let tx = tx0; tx < tx1; tx++) {
@@ -170,6 +173,21 @@ function render() {
     }
   }
 
+  // ── Pass 3: Fog of War overlay ────────────────────────────
+  for (let ty = ty0; ty < ty1; ty++) {
+    for (let tx = tx0; tx < tx1; tx++) {
+      const f = fog[ty * MAP_SIZE + tx];
+      if (f === FOG_UNEXPLORED) {
+        ctx.fillStyle = 'rgba(0,0,0,1)';
+        ctx.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+      } else if (f === FOG_SEEN) {
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+      }
+      // FOG_VISIBLE: no overlay — tile shows fully
+    }
+  }
+
   endFrame();
   drawMinimap(getCtx());
 }
@@ -180,8 +198,15 @@ async function start() {
   initInput();
   generateMap();
   await preloadSprites();
+
+  // Phase 4: reveal capital area on game start
+  revealCircle(CAPITAL_TX, CAPITAL_TY, VISION_RADII.capital);
+
+  // Log starting resources
+  console.log('[Resources] Starting inventory:', JSON.stringify(resources));
+
   startLoop(update, render);
-  console.log('[Medieval Survival] Phase 5 — solid tiles + mountain edge logic online');
+  console.log('[Medieval Survival] Phase 6 — Fog of War + Resource System online');
 }
 
 if (document.readyState === 'loading') {
