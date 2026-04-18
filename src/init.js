@@ -1,5 +1,5 @@
 // ============================================================
-// init.js — Game bootstrap entry point (Phase 3)
+// init.js — Game bootstrap entry point (Phase 5)
 // ============================================================
 
 import { startLoop } from './engine/loop.js';
@@ -10,11 +10,11 @@ import { camera } from './engine/camera.js';
 import { generateMap, getTile, MAP_SIZE, TILE_SIZE, MAP_PX } from './world/map.js';
 import { drawMinimap } from './ui/minimap.js';
 import { TILE_DEF } from './world/tiles.js';
+import { preloadSprites, getTileSprite } from './sprites/tile_sprites.js';
 
 // ---- Update ---------------------------------------------------
 function update(dt) {
   handleKeyPan(dt);
-  // Clamp camera to map bounds
   camera.clamp(MAP_PX, MAP_PX);
 }
 
@@ -34,14 +34,22 @@ function render() {
 
   for (let ty = ty0; ty < ty1; ty++) {
     for (let tx = tx0; tx < tx1; tx++) {
-      const id  = getTile(tx, ty);
-      const def = TILE_DEF[id];
-      ctx.fillStyle = def ? def.colour : '#000';
-      ctx.fillRect(tx * TILE_SIZE, ty * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+      const id     = getTile(tx, ty);
+      const def    = TILE_DEF[id];
+      const sprite = getTileSprite(id);
+      const px     = tx * TILE_SIZE;
+      const py     = ty * TILE_SIZE;
+
+      if (sprite) {
+        ctx.drawImage(sprite, px, py, TILE_SIZE, TILE_SIZE);
+      } else {
+        ctx.fillStyle = def ? def.colour : '#000';
+        ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+      }
     }
   }
 
-  // Thin grid lines at zoom ≥ 1
+  // Thin grid lines at zoom >= 0.8
   if (camera.zoom >= 0.8) {
     ctx.strokeStyle = 'rgba(0,0,0,0.12)';
     ctx.lineWidth   = 1 / camera.zoom;
@@ -60,17 +68,17 @@ function render() {
   endFrame();
 
   // Minimap overlay (screen-space, no camera transform)
-  const screenCtx = getCtx();
-  drawMinimap(screenCtx);
+  drawMinimap(getCtx());
 }
 
 // ---- Start -------------------------------------------------
-function start() {
+async function start() {
   initRenderer();
   initInput();
   generateMap();
+  await preloadSprites();
   startLoop(update, render);
-  console.log('[Medieval Survival] Phase 3 — map data online');
+  console.log('[Medieval Survival] Phase 5 — sprite system online');
 }
 
 if (document.readyState === 'loading') {
