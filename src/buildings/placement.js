@@ -69,6 +69,7 @@ export function placeBuilding() {
   for (const { tx, ty } of b.footprintTiles) occupiedTiles.add(tileKey(tx, ty));
   events.emit(EV.BUILDING_PLACED, { building: b });
   events.emit(EV.TILE_PASSABILITY_CHANGED, { tiles: b.footprintTiles });
+  if (b.state === 'complete') events.emit(EV.BUILDING_COMPLETED, { building: b });
   ghostType = null;
   return true;
 }

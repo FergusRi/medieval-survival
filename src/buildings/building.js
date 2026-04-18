@@ -13,9 +13,9 @@ export class Building {
     this.hp = def.hp; this.maxHp = def.hp;
     this.staffSlots = def.staffSlots;
     this.staff = [];
-    this.state = 'blueprint'; // 'blueprint' | 'complete'
-    this.buildProgress = 0;
     this.buildTime = def.buildTime;
+    this.buildProgress = 0;
+    this.state = def.buildTime === 0 ? 'complete' : 'blueprint';
     this.sortY = (ty + def.h) * 32;
   }
   get footprintTiles() {
