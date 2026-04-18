@@ -8,6 +8,7 @@ import { T } from '../world/tiles.js';
 import { canAfford, spend, BUILDING_COSTS } from '../resources/resources.js';
 import { events, EV } from '../engine/events.js';
 import { camera } from '../engine/camera.js';
+import { getBuildingSprite } from '../sprites/building_sprites.js';
 
 // All placed buildings: Map<id, Building>
 export const placedBuildings = new Map();
@@ -85,18 +86,30 @@ export function renderBuildings(ctx) {
 
   // Placed buildings
   for (const b of placedBuildings.values()) {
-    ctx.fillStyle = b.state === 'complete' ? 'rgba(160,100,40,0.85)' : 'rgba(100,140,200,0.7)';
-    ctx.fillRect(b.tx * TILE, b.ty * TILE, b.w * TILE, b.h * TILE);
-    ctx.strokeStyle = b.state === 'complete' ? '#8b5e20' : '#4a80c0';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(b.tx * TILE, b.ty * TILE, b.w * TILE, b.h * TILE);
-    // Label
-    ctx.fillStyle = '#fff';
-    ctx.font = `${Math.max(8, TILE * 0.35)}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const label = BUILDINGS[b.type]?.name ?? b.type;
-    ctx.fillText(label, (b.tx + b.w / 2) * TILE, (b.ty + b.h / 2) * TILE);
+    const px = b.tx * TILE;
+    const py = b.ty * TILE;
+    const pw = b.w  * TILE;
+    const ph = b.h  * TILE;
+    const sprite = b.state === 'complete' ? getBuildingSprite(b.type) : null;
+
+    if (sprite) {
+      // Draw sprite image
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(sprite, px, py, pw, ph);
+    } else {
+      // Fallback: coloured rectangle
+      ctx.fillStyle = b.state === 'complete' ? 'rgba(160,100,40,0.85)' : 'rgba(100,140,200,0.7)';
+      ctx.fillRect(px, py, pw, ph);
+      ctx.strokeStyle = b.state === 'complete' ? '#8b5e20' : '#4a80c0';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(px, py, pw, ph);
+      // Label for fallback
+      ctx.fillStyle = '#fff';
+      ctx.font = `${Math.max(8, TILE * 0.35)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(BUILDINGS[b.type]?.name ?? b.type, px + pw / 2, py + ph / 2);
+    }
   }
 
   // Ghost preview

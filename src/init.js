@@ -11,6 +11,7 @@ import { generateMap, getTile, MAP_SIZE, TILE_SIZE, MAP_PX, MAP_SEED } from './w
 import { initMinimap, drawMinimap } from './ui/minimap.js';
 import { T, TILE_DEF } from './world/tiles.js';
 import { preloadSprites, getTileSprite, getTreeSprite, PINE_TILES } from './sprites/tile_sprites.js';
+import { preloadBuildingSprites } from './sprites/building_sprites.js';
 import { resources } from './resources/resources.js';
 import { renderBuildings, updateGhostPos, handleBuildClick, cancelGhost, getGhostType } from './buildings/placement.js';
 import { renderConstruction } from './buildings/construction.js';
@@ -212,6 +213,7 @@ async function start() {
   initInput();
   generateMap();
   await preloadSprites();
+  await preloadBuildingSprites();
   // Centre camera on the middle of the map (account for UI bars)
   const midPx = (MAP_SIZE * TILE_SIZE) / 2;
   const gameH = window.innerHeight - TOP_BAR_H - BOTTOM_BAR_H;
