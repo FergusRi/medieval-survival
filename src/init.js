@@ -8,7 +8,7 @@ import { initRenderer, beginFrame, endFrame, getCtx } from './engine/renderer.js
 import { initInput, handleKeyPan } from './engine/input.js';
 import { camera } from './engine/camera.js';
 import { generateMap, getTile, MAP_SIZE, TILE_SIZE, MAP_PX, MAP_SEED } from './world/map.js';
-import { drawMinimap } from './ui/minimap.js';
+import { initMinimap, drawMinimap } from './ui/minimap.js';
 import { T, TILE_DEF } from './world/tiles.js';
 import { preloadSprites, getTileSprite, getTreeSprite, PINE_TILES } from './sprites/tile_sprites.js';
 import { resources } from './resources/resources.js';
@@ -203,7 +203,7 @@ function render() {
   }
 
   endFrame();
-  drawMinimap(getCtx());
+  drawMinimap();
 }
 
 // ---- Start ---------------------------------------------------
@@ -219,6 +219,7 @@ async function start() {
   camera.y = midPx - gameH / 2;
 
   initFrame();
+  initMinimap();
   setupBuildInput();
   setupCitizenSpawning();
   console.log('[Resources] Starting inventory:', JSON.stringify(resources));
