@@ -6,7 +6,7 @@ export const camera = {
   x: 0,        // World CSS-pixel X of viewport top-left
   y: 0,        // World CSS-pixel Y of viewport top-left
   zoom: 1.0,
-  minZoom: 0.05,
+  minZoom: 0.04,
   maxZoom: 2.5,
 
   // Screen pixel → world CSS pixel
@@ -34,11 +34,23 @@ export const camera = {
     };
   },
 
-  // Clamp camera so it never scrolls outside the world bounds
+  // Clamp camera — centres map when viewport is larger than world
   clamp(mapPixelW, mapPixelH) {
     const vpW = window.innerWidth  / this.zoom;
     const vpH = window.innerHeight / this.zoom;
-    this.x = Math.max(0, Math.min(this.x, mapPixelW - vpW));
-    this.y = Math.max(0, Math.min(this.y, mapPixelH - vpH));
+
+    if (vpW >= mapPixelW) {
+      // Viewport wider than map — centre horizontally
+      this.x = -(vpW - mapPixelW) / 2;
+    } else {
+      this.x = Math.max(0, Math.min(this.x, mapPixelW - vpW));
+    }
+
+    if (vpH >= mapPixelH) {
+      // Viewport taller than map — centre vertically
+      this.y = -(vpH - mapPixelH) / 2;
+    } else {
+      this.y = Math.max(0, Math.min(this.y, mapPixelH - vpH));
+    }
   },
 };
