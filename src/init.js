@@ -15,6 +15,7 @@ import { resources } from './resources/resources.js';
 import { renderBuildings, updateGhostPos, handleBuildClick, cancelGhost, getGhostType } from './buildings/placement.js';
 import { renderConstruction } from './buildings/construction.js';
 import { initBuildPanel } from './ui/buildpanel.js';
+import { initHUD } from './ui/hud.js';
 import { updateCitizens, renderCitizens, spawnCitizens, citizens } from './citizens/citizen.js';
 
 // ---- Deterministic per-tile RNG ------------------------------
@@ -212,6 +213,7 @@ async function start() {
   initInput();
   generateMap();
   await preloadSprites();
+  initHUD();
   initBuildPanel();
   setupBuildInput();
   setupCitizenSpawning();
