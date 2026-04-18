@@ -1,5 +1,5 @@
 // ============================================================
-// placement.js — Ghost preview + click-to-place
+// placement.js — Ghost preview + click-to-place + 2.5D render
 // ============================================================
 import { BUILDINGS } from './registry.js';
 import { Building } from './building.js';
@@ -8,7 +8,7 @@ import { T } from '../world/tiles.js';
 import { canAfford, spend, BUILDING_COSTS } from '../resources/resources.js';
 import { events, EV } from '../engine/events.js';
 import { camera } from '../engine/camera.js';
-import { getBuildingSprite } from '../sprites/building_sprites.js';
+import { getBuildingSprite, SPRITE_EXTRA_ROWS_ABOVE } from '../sprites/building_sprites.js';
 
 // All placed buildings: Map<id, Building>
 export const placedBuildings = new Map();
@@ -19,6 +19,7 @@ let ghostType = null; // currently selected building type
 let ghostTX = 0, ghostTY = 0;
 
 const PLACEABLE = new Set([T.GRASS, T.DIRT, T.SCRUBLAND]);
+const TILE = 32;
 
 function tileKey(tx, ty) { return `${tx},${ty}`; }
 
@@ -56,8 +57,8 @@ export function getGhostType()   { return ghostType; }
 
 export function updateGhostPos(screenX, screenY) {
   const world = camera.screenToWorld(screenX, screenY);
-  ghostTX = Math.floor(world.x / 32);
-  ghostTY = Math.floor(world.y / 32);
+  ghostTX = Math.floor(world.x / TILE);
+  ghostTY = Math.floor(world.y / TILE);
 }
 
 export function placeBuilding() {
@@ -80,39 +81,59 @@ export function handleBuildClick(screenX, screenY) {
   return placeBuilding();
 }
 
-// Draw ghost + placed buildings onto ctx (world-space, already transformed)
-export function renderBuildings(ctx) {
-  const TILE = 32;
+/**
+ * Draw a single building in 2.5D style.
+ * The sprite is drawn taller than the tile footprint:
+ *   - Bottom edge = (ty + h) * TILE  (front-face baseline, used for Y-sort)
+ *   - Top edge    = ty * TILE - SPRITE_EXTRA_ROWS_ABOVE * TILE
+ *   - Width       = w * TILE
+ * This makes the roof appear to rise above the footprint naturally.
+ */
+export function drawBuilding(ctx, b) {
+  const sprite = b.state === 'complete' ? getBuildingSprite(b.type) : null;
 
-  // Placed buildings
-  for (const b of placedBuildings.values()) {
+  // 2.5D dimensions
+  const drawX = b.tx * TILE;
+  const drawW = b.w  * TILE;
+  // Sprite extends SPRITE_EXTRA_ROWS_ABOVE tiles above the footprint top
+  const drawY = (b.ty - SPRITE_EXTRA_ROWS_ABOVE) * TILE;
+  const drawH = (b.h  + SPRITE_EXTRA_ROWS_ABOVE) * TILE;
+
+  if (sprite) {
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(sprite, drawX, drawY, drawW, drawH);
+  } else {
+    // Fallback: coloured rectangle for the footprint only
     const px = b.tx * TILE;
     const py = b.ty * TILE;
     const pw = b.w  * TILE;
     const ph = b.h  * TILE;
-    const sprite = b.state === 'complete' ? getBuildingSprite(b.type) : null;
-
-    if (sprite) {
-      // Draw sprite image
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(sprite, px, py, pw, ph);
-    } else {
-      // Fallback: coloured rectangle
-      ctx.fillStyle = b.state === 'complete' ? 'rgba(160,100,40,0.85)' : 'rgba(100,140,200,0.7)';
-      ctx.fillRect(px, py, pw, ph);
-      ctx.strokeStyle = b.state === 'complete' ? '#8b5e20' : '#4a80c0';
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(px, py, pw, ph);
-      // Label for fallback
-      ctx.fillStyle = '#fff';
-      ctx.font = `${Math.max(8, TILE * 0.35)}px sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(BUILDINGS[b.type]?.name ?? b.type, px + pw / 2, py + ph / 2);
-    }
+    ctx.fillStyle = b.state === 'complete' ? 'rgba(160,100,40,0.85)' : 'rgba(100,140,200,0.7)';
+    ctx.fillRect(px, py, pw, ph);
+    ctx.strokeStyle = b.state === 'complete' ? '#8b5e20' : '#4a80c0';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(px, py, pw, ph);
+    // Label
+    ctx.fillStyle = '#fff';
+    ctx.font = `${Math.max(8, TILE * 0.35)}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(BUILDINGS[b.type]?.name ?? b.type, px + pw / 2, py + ph / 2);
   }
+}
 
-  // Ghost preview
+/**
+ * Get the Y-sort baseline for a building.
+ * = world Y of the front-face bottom edge.
+ */
+export function buildingSortY(b) {
+  return (b.ty + b.h) * TILE;
+}
+
+// renderBuildings is now only used for the ghost preview.
+// Actual building sprites are rendered via the Y-sorted pass in init.js.
+export function renderBuildings(ctx) {
+  // Ghost preview only
   if (ghostType) {
     const def = BUILDINGS[ghostType];
     const valid = isValidPlacement(ghostType, ghostTX, ghostTY);

@@ -13,10 +13,10 @@ import { T, TILE_DEF } from './world/tiles.js';
 import { preloadSprites, getTileSprite, getTreeSprite, PINE_TILES } from './sprites/tile_sprites.js';
 import { preloadBuildingSprites } from './sprites/building_sprites.js';
 import { resources } from './resources/resources.js';
-import { renderBuildings, updateGhostPos, handleBuildClick, cancelGhost, getGhostType } from './buildings/placement.js';
+import { renderBuildings, drawBuilding, buildingSortY, placedBuildings, updateGhostPos, handleBuildClick, cancelGhost, getGhostType } from './buildings/placement.js';
 import { renderConstruction } from './buildings/construction.js';
 import { initFrame, TOP_BAR_H, BOTTOM_BAR_H } from './ui/frame.js';
-import { updateCitizens, renderCitizens, spawnCitizens, citizens } from './citizens/citizen.js';
+import { updateCitizens, spawnCitizens, citizens } from './citizens/citizen.js';
 
 // ---- Deterministic per-tile RNG ------------------------------
 function tileHash(tx, ty) {
@@ -165,24 +165,59 @@ function render() {
     ctx.stroke();
   }
 
-  // ── Pass 2: Trees ─────────────────────────────────────────
+  // ── Pass 2+3: Y-sorted trees, buildings, citizens ─────────
+  // Collect all drawable entities with a sortY value, then draw
+  // in ascending sortY order so "closer" (lower) objects appear in front.
+
   const pineSprite = getTreeSprite('pine');
-  const treeStartY = Math.max(0, ty0 - 1);
+
+  // Build sorted draw list
+  const drawList = [];
+
+  // Trees (sortY = bottom of 2-tile-tall sprite = (ty+1)*TILE)
+  const treeStartY = Math.max(0, ty0 - 2);
   for (let ty = treeStartY; ty < ty1; ty++) {
     for (let tx = tx0; tx < tx1; tx++) {
       const id = getTile(tx, ty);
       if (!PINE_TILES.has(id)) continue;
       if (tileFrac(tx, ty) >= PINE_DENSITY) continue;
-      const px = tx * TILE_SIZE, py = (ty - 1) * TILE_SIZE;
-      if (pineSprite) ctx.drawImage(pineSprite, px, py, TILE_SIZE, TILE_SIZE * 2);
-      else { ctx.fillStyle = '#2d5a1b'; ctx.fillRect(px, py + 4, TILE_SIZE, TILE_SIZE * 2 - 4); }
+      drawList.push({
+        sortY: (ty + 1) * TILE_SIZE,
+        draw: () => {
+          const px = tx * TILE_SIZE, py = (ty - 1) * TILE_SIZE;
+          if (pineSprite) ctx.drawImage(pineSprite, px, py, TILE_SIZE, TILE_SIZE * 2);
+          else { ctx.fillStyle = '#2d5a1b'; ctx.fillRect(px, py + 4, TILE_SIZE, TILE_SIZE * 2 - 4); }
+        }
+      });
     }
   }
 
-  // ── Pass 3: Buildings + ghost ─────────────────────────────
+  // Buildings (sortY = front-face baseline)
+  for (const b of placedBuildings.values()) {
+    drawList.push({
+      sortY: buildingSortY(b),
+      draw: () => drawBuilding(ctx, b)
+    });
+  }
+
+  // Citizens (sortY = feet position)
+  // Drawn inline via lambda so we reuse citizen draw logic
+  for (const c of citizens) {
+    drawList.push({
+      sortY: c.y + 4, // feet
+      draw: () => c.draw(ctx)
+    });
+  }
+
+  // Sort ascending by sortY
+  drawList.sort((a, b) => a.sortY - b.sortY);
+
+  // Draw everything
+  for (const item of drawList) item.draw();
+
+  // Ghost preview + construction overlays on top
   renderBuildings(ctx);
   renderConstruction(ctx);
-  renderCitizens(ctx);
 
   // ── Citizen name tooltip ──────────────────────────────────
   if (_hoveredCitizen) {
