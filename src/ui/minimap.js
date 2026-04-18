@@ -10,8 +10,9 @@ let mapCanvas  = null;
 let mapCtx     = null;
 let dirty      = true;
 
-const CORNER_SIZE = 160; // px — always-visible minimap
-const CORNER_PAD  = 12;
+const CORNER_SIZE = 150; // px — always-visible minimap
+const CORNER_PAD  = 10;
+const TOP_BAR_H   = 36 + 6; // match frame.js TOP_BAR_H + a little breathing room
 
 window.addEventListener('keydown', e => {
   if (e.key === 'm' || e.key === 'M') fullscreen = !fullscreen;
@@ -75,7 +76,7 @@ export function drawMinimap(ctx) {
     // ── Corner minimap ──────────────────────────────────────
     const cs   = CORNER_SIZE;
     const mx   = vw - cs - CORNER_PAD;
-    const my   = CORNER_PAD;
+    const my   = TOP_BAR_H;
 
     // Parchment background
     ctx.fillStyle = 'rgba(10,8,5,0.82)';

@@ -29,11 +29,12 @@ function injectStyles() {
       box-shadow:0 2px 12px rgba(0,0,0,0.7);
     }
     #frame-top .title {
-      font-size:15px; font-weight:bold; color:#d4a84b;
+      font-size:13px; font-weight:bold; color:#d4a84b;
       letter-spacing:2px; text-shadow:0 1px 4px #000;
+      white-space:nowrap; margin-right:16px; flex-shrink:0;
     }
     #frame-top .hint {
-      font-size:11px; color:#7a6040;
+      font-size:11px; color:#7a6040; white-space:nowrap;
     }
     #frame-bottom {
       position:fixed; bottom:0; left:0; right:0; height:${BOTTOM_BAR_H}px;
@@ -53,14 +54,14 @@ function injectStyles() {
     }
     #build-toggle:hover { background:linear-gradient(to bottom,#c07830,#8b5010); }
     #res-bar {
-      display:flex; align-items:center; gap:22px; flex:1; justify-content:center;
+      display:flex; align-items:center; gap:16px; flex:1;
     }
     .res-item {
-      display:flex; align-items:center; gap:5px;
-      color:#e8d090; font-size:14px; font-weight:600; font-family:sans-serif;
+      display:flex; align-items:center; gap:4px;
+      color:#e8d090; font-size:13px; font-weight:600; font-family:sans-serif;
     }
-    .res-item .icon { font-size:19px; line-height:1; }
-    .res-item .val  { min-width:28px; text-align:right; }
+    .res-item .icon { font-size:16px; line-height:1; }
+    .res-item .val  { min-width:24px; }
 
     #build-panel {
       position:fixed; bottom:${BOTTOM_BAR_H + 8}px; left:14px; z-index:500;
@@ -96,26 +97,14 @@ function injectStyles() {
 function buildTopBar() {
   const bar = document.createElement('div');
   bar.id = 'frame-top';
-  bar.innerHTML = `
-    <span class="title">⚔ MEDIEVAL SURVIVAL</span>
-    <span class="hint">[WASD/Arrows] pan &nbsp; [Scroll] zoom &nbsp; [M] map</span>
-  `;
-  document.body.appendChild(bar);
-}
 
-// ── Bottom bar ───────────────────────────────────────────────
-function buildBottomBar() {
-  const bar = document.createElement('div');
-  bar.id = 'frame-bottom';
+  // Title
+  const title = document.createElement('span');
+  title.className = 'title';
+  title.textContent = '⚔ MEDIEVAL SURVIVAL';
+  bar.appendChild(title);
 
-  // Build button
-  const btn = document.createElement('button');
-  btn.id = 'build-toggle';
-  btn.innerHTML = '🔨 Build';
-  btn.addEventListener('click', () => isOpen ? closePanel() : openPanel());
-  bar.appendChild(btn);
-
-  // Resources
+  // Resources (left of centre)
   const res = document.createElement('div');
   res.id = 'res-bar';
   for (const [key, icon] of Object.entries(ICONS)) {
@@ -130,12 +119,34 @@ function buildBottomBar() {
     resourceEls[key] = valEl;
   }
   bar.appendChild(res);
+
+  // Hint (right)
+  const hint = document.createElement('span');
+  hint.className = 'hint';
+  hint.innerHTML = '[WASD] pan &nbsp;·&nbsp; [Scroll] zoom &nbsp;·&nbsp; [M] map';
+  bar.appendChild(hint);
+
   document.body.appendChild(bar);
 
-  // Live updates
+  // Live resource updates
   events.on(EV.RESOURCE_CHANGED, ({ resource, newValue }) => {
     if (resourceEls[resource]) resourceEls[resource].textContent = Math.floor(newValue);
   });
+}
+
+// ── Bottom bar ───────────────────────────────────────────────
+function buildBottomBar() {
+  const bar = document.createElement('div');
+  bar.id = 'frame-bottom';
+
+  // Build button only
+  const btn = document.createElement('button');
+  btn.id = 'build-toggle';
+  btn.innerHTML = '🔨 Build';
+  btn.addEventListener('click', () => isOpen ? closePanel() : openPanel());
+  bar.appendChild(btn);
+
+  document.body.appendChild(bar);
 }
 
 // ── Build panel popup ─────────────────────────────────────────
