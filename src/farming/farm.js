@@ -2,7 +2,7 @@
 // farm.js — Farm Plot soil state management (Phase 14)
 // ============================================================
 
-import { events, EV } from '../core/events.js';
+import { events, EV } from '../engine/events.js';
 import { resources } from '../resources/resources.js';
 import { CROPS } from './crops.js';
 
