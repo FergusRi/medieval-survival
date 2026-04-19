@@ -9,9 +9,44 @@ import { T } from '../world/tiles.js';
 import { events, EV } from '../engine/events.js';
 import { placedBuildings } from '../buildings/placement.js';
 import { applyBuildWork } from '../buildings/construction.js';
+import { findPath } from '../world/pathfinder.js';
+import { isInCombat } from '../phases/phases.js';
+import { craftedWeapons, takeWeapon, WEAPONS } from '../items/weapons.js';
+import { GUARDHOUSE_PATROL_RADIUS } from '../resources/resources.js';
+import { drawGrave } from '../sprites/effect_sprites.js';
+import { getTunicColour, drawWeaponOverlay } from '../sprites/citizen_sprites.js';
+// enemies imported lazily to avoid circular dep — accessed via getter below
+let _enemiesRef = null;
+export function setCitizenEnemyRef(arr) { _enemiesRef = arr; }
 
 const TILE = 32;
 const WANDER_RADIUS = 5; // tiles
+
+// ── Combat constants ─────────────────────────────────────────
+const CITIZEN_ATTACK_RANGE  = 32;  // px — melee
+const CITIZEN_ATTACK_RATE   = 1.0; // attacks/s base
+const CITIZEN_BASE_DAMAGE   = 6;
+const CITIZEN_ENGAGE_RADIUS = 120; // px — how far citizen will scan for enemies
+const CITIZEN_COMBAT_XP_PER_KILL = 20;
+
+// ── Skill XP & levelling ────────────────────────────────────
+/**
+ * Recalculate skill level after an XP gain.
+ * Level = floor(xp / 100), capped at 100.
+ */
+export function recalcSkill(citizen, skill) {
+  const newLevel = Math.min(100, Math.floor(citizen.skillXp[skill] / 100));
+  if (newLevel !== citizen.skills[skill]) {
+    citizen.skills[skill] = newLevel;
+    // Phase 29: level-up particle burst here
+  }
+}
+
+/** Award XP for a skill and immediately recalc level. */
+export function awardXp(citizen, skill, amount) {
+  citizen.skillXp[skill] += amount;
+  recalcSkill(citizen, skill);
+}
 
 const WALKABLE = new Set([T.GRASS, T.DIRT, T.SAND, T.SCRUBLAND, T.STONE, T.FOREST]);
 
@@ -41,7 +76,8 @@ function findNearestBlueprint(cx, cy) {
   return best;
 }
 
-function randomWanderTarget(cx, cy) {
+// Pick a random walkable tile nearby and return its tile coords (or null)
+function randomWanderTile(cx, cy) {
   for (let attempt = 0; attempt < 20; attempt++) {
     const dx = Math.floor((Math.random() * 2 - 1) * WANDER_RADIUS);
     const dy = Math.floor((Math.random() * 2 - 1) * WANDER_RADIUS);
@@ -49,9 +85,14 @@ function randomWanderTarget(cx, cy) {
     const ty = Math.floor(cy / TILE) + dy;
     if (tx < 0 || ty < 0 || tx >= MAP_SIZE || ty >= MAP_SIZE) continue;
     const id = getTile(tx, ty);
-    if (WALKABLE.has(id)) return { x: tx * TILE + 16, y: ty * TILE + 16 };
+    if (WALKABLE.has(id)) return { tx, ty };
   }
   return null;
+}
+
+// Convert a tile-coord waypoint array into world-px targets
+function waypointsToWorldPx(waypoints) {
+  return waypoints.map(wp => ({ x: wp.tx * TILE + 16, y: wp.ty * TILE + 16 }));
 }
 
 export class Citizen {
@@ -67,7 +108,8 @@ export class Citizen {
     this.skillXp = { mining: 0, building: 0, farming: 0, combat: 0 };
     this.weapon  = null;
     this.state   = 'IDLE';
-    this.target  = null; // { x, y } world px
+    this.target  = null;     // current waypoint { x, y } world px
+    this._waypoints = [];    // remaining waypoint queue [ {x,y}, … ]
 
     // Facing: 1 = right, -1 = left
     this.facing  = 1;
@@ -87,62 +129,223 @@ export class Citizen {
     this.sortY       = this.y + 4;
     this._idleTimer  = Math.random() * 1500; // staggered start
     this.actionCount = 0;
+
+    // Combat
+    this.attackCooldown = 0;
+    this.combatTarget   = null;
+  }
+
+  /** Take damage from an enemy attack. Returns true if citizen died. */
+  takeDamage(amount) {
+    this.hp -= amount;
+    if (this.hp <= 0) {
+      this.hp   = 0;
+      this.dead = true;
+      events.emit(EV.CITIZEN_DIED, { citizen: this });
+      return true;
+    }
+    return false;
   }
 
   update(dt) {
     const dtS = dt / 1000;
     this._idleTimer -= dt;
 
-    // ── Check for nearby blueprints (highest priority) ────────
-    if (this.state === 'IDLE' && !this.target && this._idleTimer <= 0) {
-      const bp = findNearestBlueprint(this.x, this.y);
-      if (bp) {
-        // Walk to building centre
-        this.state = 'BUILDING';
-        this._buildTarget = bp;
-        this.target = {
-          x: bp.tx * TILE + (bp.w * TILE) / 2,
-          y: bp.ty * TILE + (bp.h * TILE) / 2,
-        };
+    // ── Helper: navigate to a tile coord using A* ─────────────
+    const navigateTo = (goalTX, goalTY) => {
+      const startTX = Math.floor(this.x / TILE);
+      const startTY = Math.floor(this.y / TILE);
+      const path = findPath(startTX, startTY, goalTX, goalTY);
+      if (path.length > 0) {
+        this._waypoints = waypointsToWorldPx(path);
+        this.target = this._waypoints.shift();
       } else {
-        this.target = randomWanderTarget(this.x, this.y);
-        this._idleTimer = 1500 + Math.random() * 2500;
+        // A* found no path — fall back to direct line
+        this._waypoints = [];
+        this.target = { x: goalTX * TILE + 16, y: goalTY * TILE + 16 };
+      }
+    };
+
+    // ── Combat: engage nearby enemies during COMBAT phase ────
+    if (isInCombat() && _enemiesRef && _enemiesRef.length > 0) {
+      // Find nearest living enemy within engage radius
+      let nearest = null;
+      let nearestDist = CITIZEN_ENGAGE_RADIUS;
+      for (const en of _enemiesRef) {
+        if (en.dead) continue;
+        const d = Math.hypot(en.x - this.x, en.y - this.y);
+        if (d < nearestDist) { nearestDist = d; nearest = en; }
+      }
+
+      if (nearest) {
+        this.combatTarget = nearest;
+        this.state = 'COMBAT';
+      } else if (this.state === 'COMBAT') {
+        // No enemies in range — return to IDLE
+        this.combatTarget = null;
+        this.state = 'IDLE';
+      }
+    } else if (this.state === 'COMBAT') {
+      this.combatTarget = null;
+      this.state = 'IDLE';
+    }
+
+    if (this.state === 'COMBAT' && this.combatTarget) {
+      const en = this.combatTarget;
+      if (en.dead) {
+        this.combatTarget = null;
+        this.state = 'IDLE';
+      } else {
+        const dx = en.x - this.x;
+        const dy = en.y - this.y;
+        const dist = Math.hypot(dx, dy);
+
+        // Weapon stats override defaults when armed
+        const weaponRange  = this.weapon ? this.weapon.range    : CITIZEN_ATTACK_RANGE;
+        const weaponDmg    = this.weapon
+          ? this.weapon.damage + Math.floor(this.skills.combat / 10)
+          : CITIZEN_BASE_DAMAGE + Math.floor(this.skills.combat / 10);
+        const weaponCd     = this.weapon ? this.weapon.cooldown : 1 / CITIZEN_ATTACK_RATE;
+
+        if (dist > weaponRange) {
+          // Move toward enemy
+          const spd = Math.min(this.speed * dtS, dist - weaponRange + 1);
+          this.x += (dx / dist) * spd;
+          this.y += (dy / dist) * spd;
+          this.facing  = dx >= 0 ? 1 : -1;
+          this._moving = true;
+          this._walkTime += dt;
+        } else {
+          // In range — attack
+          this._moving = false;
+          this.facing  = dx >= 0 ? 1 : -1;
+          this.attackCooldown -= dtS;
+          if (this.attackCooldown <= 0) {
+            this.attackCooldown = weaponCd;
+            const dmg = weaponDmg;
+            const killed = en.takeDamage(dmg);
+            if (killed) {
+              awardXp(this, 'combat', CITIZEN_COMBAT_XP_PER_KILL);
+              this.combatTarget = null;
+              this.state = 'IDLE';
+            } else {
+              // Award 1 XP per hit
+              awardXp(this, 'combat', 1);
+            }
+          }
+        }
+        this.sortY = this.y + 4;
+        return;
+      }
+    }
+
+    // ── Armory weapon pickup (unarmed + weapons available) ───
+    if (this.state === 'IDLE' && !this.weapon && !this.target &&
+        this._waypoints.length === 0 && craftedWeapons.length > 0) {
+      // Find nearest complete armory within 3 tiles (96px)
+      const ARMORY_SCAN = 96;
+      let nearestArmory = null, nearestDist = Infinity;
+      for (const b of placedBuildings.values()) {
+        if (b.type !== 'armory' || b.state !== 'complete') continue;
+        const ax = b.tx * TILE + (b.w * TILE) / 2;
+        const ay = b.ty * TILE + (b.h * TILE) / 2;
+        const dist = Math.hypot(ax - this.x, ay - this.y);
+        if (dist < nearestDist) { nearestDist = dist; nearestArmory = b; }
+      }
+      if (nearestArmory && nearestDist <= ARMORY_SCAN) {
+        const weapon = takeWeapon();
+        if (weapon) {
+          this.weapon = weapon.def;
+          events.emit(EV.WEAPON_EQUIPPED, { citizen: this, weapon });
+        }
+      } else if (nearestArmory) {
+        // Walk toward nearest armory
+        const goalTX = Math.floor((nearestArmory.tx * TILE + (nearestArmory.w * TILE) / 2) / TILE);
+        const goalTY = Math.floor((nearestArmory.ty * TILE + (nearestArmory.h * TILE) / 2) / TILE);
+        navigateTo(goalTX, goalTY);
+      }
+    }
+
+    // ── Check for nearby blueprints (highest priority) ────────
+    if (this.state === 'IDLE' && !this.target && this._waypoints.length === 0 && this._idleTimer <= 0) {
+      // Phase 27: Guardhouse patrol — if assigned to a guardhouse, patrol its radius
+      const assignedGuardhouse = this.assignedBuilding &&
+        this.assignedBuilding.type === 'barracks' || // barracks also act as patrol post
+        (this.assignedBuilding && this.assignedBuilding.type === 'guardhouse')
+          ? this.assignedBuilding : null;
+
+      if (assignedGuardhouse && assignedGuardhouse.state === 'complete') {
+        // Patrol within GUARDHOUSE_PATROL_RADIUS around the guardhouse
+        const ghx = (assignedGuardhouse.tx + assignedGuardhouse.w / 2) * TILE;
+        const ghy = (assignedGuardhouse.ty + assignedGuardhouse.h / 2) * TILE;
+        const angle = Math.random() * Math.PI * 2;
+        const dist  = Math.random() * GUARDHOUSE_PATROL_RADIUS * 0.8;
+        const px    = ghx + Math.cos(angle) * dist;
+        const py    = ghy + Math.sin(angle) * dist;
+        const ptx   = Math.floor(px / TILE);
+        const pty   = Math.floor(py / TILE);
+        navigateTo(ptx, pty);
+        this._idleTimer = 2000 + Math.random() * 2000;
+      } else {
+        const bp = findNearestBlueprint(this.x, this.y);
+        if (bp) {
+          this.state = 'BUILDING';
+          this._buildTarget = bp;
+          const goalTX = Math.floor((bp.tx * TILE + (bp.w * TILE) / 2) / TILE);
+          const goalTY = Math.floor((bp.ty * TILE + (bp.h * TILE) / 2) / TILE);
+          navigateTo(goalTX, goalTY);
+        } else {
+          const wt = randomWanderTile(this.x, this.y);
+          if (wt) navigateTo(wt.tx, wt.ty);
+          this._idleTimer = 1500 + Math.random() * 2500;
+        }
       }
     }
 
     // ── If BUILDING and arrived, do work ──────────────────────
     if (this.state === 'BUILDING') {
       const bp = this._buildTarget;
-      // Blueprint was completed by someone else
       if (!bp || bp.state !== 'blueprint') {
+        // Blueprint completed or removed
         this.state = 'IDLE';
         this._buildTarget = null;
         this.target = null;
+        this._waypoints = [];
       } else {
-        // Keep walking toward centre until close enough
         const bx = bp.tx * TILE + (bp.w * TILE) / 2;
         const by = bp.ty * TILE + (bp.h * TILE) / 2;
         const dist = Math.hypot(bx - this.x, by - this.y);
         if (dist < TILE * 1.5) {
           // Arrived — do build work
           this.target = null;
+          this._waypoints = [];
           this._moving = false;
           this._buildTime = (this._buildTime || 0) + dt;
-          // Hammer animation: oscillate facing
           this.facing = Math.sin(this._buildTime * 0.005) >= 0 ? 1 : -1;
-          applyBuildWork(bp, dtS);
+          // Skill effect: progress/s = 1 + building_skill/100
+          const buildMult = 1 + this.skills.building / 100;
+          applyBuildWork(bp, dtS * buildMult);
+          // Award 2 XP per second of build work
+          awardXp(this, 'building', 2 * dtS);
           this.sortY = this.y + 4;
-          return; // skip normal movement this tick
-        } else if (!this.target) {
-          // Re-target if we lost it
-          this.target = { x: bx, y: by };
+          return;
+        } else if (!this.target && this._waypoints.length === 0) {
+          // Lost target — re-path
+          const goalTX = Math.floor(bx / TILE);
+          const goalTY = Math.floor(by / TILE);
+          navigateTo(goalTX, goalTY);
         }
       }
     }
 
     this._moving = false;
 
-    // Move toward target
+    // ── Advance along waypoint queue ──────────────────────────
+    if (!this.target && this._waypoints.length > 0) {
+      this.target = this._waypoints.shift();
+    }
+
+    // ── Move toward current waypoint ──────────────────────────
     if (this.target) {
       const dx = this.target.x - this.x;
       const dy = this.target.y - this.y;
@@ -151,8 +354,10 @@ export class Citizen {
         this.x = this.target.x;
         this.y = this.target.y;
         this.target = null;
-        if (this.state === 'BUILDING') { /* will do work next tick */ }
-        else this.state = 'IDLE';
+        // If queue empty and not BUILDING, go idle
+        if (this._waypoints.length === 0 && this.state !== 'BUILDING') {
+          this.state = 'IDLE';
+        }
       } else {
         const spd = Math.min(this.speed * dtS, dist);
         this.x += (dx / dist) * spd;
@@ -227,7 +432,7 @@ export class Citizen {
     ctx.stroke();
 
     // ── Body (oval, top-down foreshortened) ───────────────────
-    ctx.fillStyle = this.shirtColour;
+    ctx.fillStyle = getTunicColour(this.state, this.shirtColour);
     ctx.beginPath();
     ctx.ellipse(cx, bodyY, bodyW / 2, bodyH / 2, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -266,6 +471,11 @@ export class Citizen {
       ctx.fillRect(raEndX - 2, raEndY - 1, 4, 2);
       ctx.fillStyle = '#c8a060';
       ctx.fillRect(raEndX - 1, raEndY, 2, 3);
+    }
+
+    // ── Weapon / tool overlay (Phase 29) ─────────────────────
+    if (!isBuilding) {
+      drawWeaponOverlay(ctx, cx, bodyY, f, this.weapon, this.state);
     }
 
     // ── Head ──────────────────────────────────────────────────
@@ -313,6 +523,20 @@ export class Citizen {
 // Global citizen list
 export const citizens = [];
 
+// Grave markers: { x, y } world-px positions of fallen citizens
+const graves = [];
+events.on(EV.CITIZEN_DIED, ({ citizen }) => {
+  graves.push({ x: citizen.x, y: citizen.y });
+});
+
+/** Draw all grave markers on the ground layer (call before Y-sort pass). */
+export function renderGraves(ctx) {
+  for (const g of graves) drawGrave(ctx, g.x, g.y);
+}
+
+/** Clear graves (call on new game / session reset). */
+export function clearGraves() { graves.length = 0; }
+
 export function spawnCitizens(building, count = 3) {
   for (let i = 0; i < count; i++) {
     const c = new Citizen(building);
@@ -322,7 +546,11 @@ export function spawnCitizens(building, count = 3) {
 }
 
 export function updateCitizens(dt) {
-  for (const c of citizens) c.update(dt);
+  for (let i = citizens.length - 1; i >= 0; i--) {
+    const c = citizens[i];
+    c.update(dt);
+    if (c.dead) citizens.splice(i, 1);
+  }
 }
 
 export function renderCitizens(ctx) {

@@ -12,11 +12,29 @@ import { initMinimap, drawMinimap } from './ui/minimap.js';
 import { T, TILE_DEF } from './world/tiles.js';
 import { preloadSprites, getTileSprite, getTreeSprite, PINE_TILES } from './sprites/tile_sprites.js';
 import { preloadBuildingSprites } from './sprites/building_sprites.js';
-import { resources } from './resources/resources.js';
-import { renderBuildings, drawBuilding, buildingSortY, placedBuildings, updateGhostPos, handleBuildClick, cancelGhost, getGhostType, cycleGhostRotation } from './buildings/placement.js';
+import { resources, initProduction } from './resources/resources.js';
+import { renderBuildings, drawBuilding, buildingSortY, placedBuildings, updateGhostPos, handleBuildClick, cancelGhost, getGhostType, cycleGhostRotation, destroyBuilding, drawBuildingDamageOverlay } from './buildings/placement.js';
 import { renderConstruction } from './buildings/construction.js';
 import { initFrame, TOP_BAR_H, BOTTOM_BAR_H } from './ui/frame.js';
-import { updateCitizens, spawnCitizens, citizens } from './citizens/citizen.js';
+import { updateCitizens, spawnCitizens, citizens, setCitizenEnemyRef, renderGraves, clearGraves } from './citizens/citizen.js';
+import { spatialGrid } from './world/spatial.js';
+import { updateAssignments } from './citizens/assignment.js';
+import { tickFlowField, scheduleRebuild } from './world/flowfield.js';
+import { drawFarmPlot } from './farming/farm.js';
+import './farming/farm.js'; // activate WAVE_STARTED / WAVE_ENDED listeners
+import { updateTimer, resetTimer } from './phases/timer.js';
+import { transitionTo, getCurrentPhase, checkLoss, PHASE } from './phases/phases.js';
+import { updateEnemies, enemies } from './enemies/enemy.js';
+import './enemies/waves.js'; // activate COMBAT_STARTED → spawnWave listener
+import { updateTowers, removeTowerCooldown } from './combat/towers.js';
+import { updateProjectiles, drawProjectiles, projectiles } from './combat/projectiles.js';
+import { initHUD, updateHUDTimer } from './ui/hud.js';
+import { initInfoPanel, refreshInfoPanel } from './ui/panels.js';
+import { initAftermath } from './ui/aftermath.js';
+import { initStartScreen } from './screens/start.js';
+import { initGameOver }    from './screens/gameover.js';
+import { updateParticles, drawParticles, spawnHitSparks, spawnDeathPuff, spawnHarvestGlint, spawnLevelUpBurst, spawnCatapultSplash } from './effects/particles.js';
+import { updateShake, applyShake, triggerShake } from './effects/screenshake.js';
 
 // ---- Deterministic per-tile RNG ------------------------------
 function tileHash(tx, ty) {
@@ -103,17 +121,34 @@ function setupCitizenSpawning() {
   });
 }
 
+// ---- Shared dt for render flash timers (Phase 20) -----------
+let _lastDt = 16;
+
 // ---- Update ---------------------------------------------------
 function update(dt) {
+  _lastDt = dt;
   handleKeyPan(dt);
   camera.clamp(MAP_PX, MAP_PX);
   updateCitizens(dt);
+  updateAssignments(dt);
+  tickFlowField();
+  updateTimer(dt);
+  updateTowers(dt, placedBuildings, enemies);
+  updateProjectiles(dt, enemies);
+  updateEnemies(dt, placedBuildings, citizens);
+  checkLoss();
+  // Rebuild spatial grid after all positions are updated
+  spatialGrid.rebuild(citizens, placedBuildings.values());
+  updateParticles(dt);
+  updateShake(dt);
 }
 
 // ---- Render ---------------------------------------------------
 function render() {
   beginFrame();
   const ctx = getCtx();
+  ctx.save();
+  applyShake(ctx);
 
   const topLeft     = camera.screenToWorld(0, 0);
   const bottomRight = camera.screenToWorld(window.innerWidth, window.innerHeight);
@@ -208,19 +243,37 @@ function render() {
   }
 
   // Buildings (sortY = front-face baseline)
+  // Farm Plot soil overlays — drawn as ground layer before Y-sort entities
+  for (const b of placedBuildings.values()) {
+    if (b.type === 'farm_plot' && b.soilTiles) drawFarmPlot(ctx, b, camera);
+  }
+
+  // Grave markers — ground layer, flat beneath all entities
+  renderGraves(ctx);
+
   for (const b of placedBuildings.values()) {
     drawList.push({
       sortY: buildingSortY(b),
-      draw: () => drawBuilding(ctx, b)
+      draw: () => {
+        drawBuilding(ctx, b);
+        drawBuildingDamageOverlay(ctx, b, _lastDt);
+      }
     });
   }
 
   // Citizens (sortY = feet position)
-  // Drawn inline via lambda so we reuse citizen draw logic
   for (const c of citizens) {
     drawList.push({
-      sortY: c.y + 4, // feet
+      sortY: c.y + 4,
       draw: () => c.draw(ctx)
+    });
+  }
+
+  // Enemies (sortY = centre y + radius)
+  for (const e of enemies) {
+    drawList.push({
+      sortY: e.y + e.radius,
+      draw: () => e.draw(ctx)
     });
   }
 
@@ -233,6 +286,12 @@ function render() {
   // Ghost preview + construction overlays on top
   renderBuildings(ctx);
   renderConstruction(ctx);
+
+  // Projectiles drawn above everything (Phase 19)
+  drawProjectiles(ctx);
+
+  // Phase 30: particles drawn above projectiles
+  drawParticles(ctx);
 
   // ── Citizen name tooltip ──────────────────────────────────
   if (_hoveredCitizen) {
@@ -264,6 +323,11 @@ function render() {
     ctx.restore();
   }
 
+  // Restore shake translate before UI/HUD draws in screen space
+  ctx.restore();
+
+  updateHUDTimer();
+  refreshInfoPanel();
   endFrame();
   drawMinimap();
 }
@@ -282,18 +346,80 @@ async function start() {
   camera.y = midPx - gameH / 2;
 
   initFrame();
+  initHUD();
+  initInfoPanel();
+  initAftermath();
   initMinimap();
   setupBuildInput();
   setupCitizenSpawning();
+
+  // Phase 18: give citizens a reference to the live enemies array
+  setCitizenEnemyRef(enemies);
+
+  // Phase 27: wire up production loop (WAVE_ENDED listener)
+  initProduction(placedBuildings, citizens);
+
+  // Phase 20: damage flash on hit
+  events.on(EV.BUILDING_DAMAGED, ({ building }) => {
+    building._flashTimer = 0.25; // 250ms red flash
+  });
+
+  // Phase 20: remove destroyed buildings from the world
+  events.on(EV.BUILDING_DESTROYED, ({ building }) => {
+    destroyBuilding(building);
+    removeTowerCooldown(building.id);
+    // Phase 30: debris + shake
+    const bx = (building.tx + building.w / 2) * 32;
+    const by = (building.ty + building.h / 2) * 32;
+    spawnCatapultSplash(bx, by);
+    triggerShake(5);
+    console.log(`[Combat] Building destroyed: ${building.type}`);
+  });
+
+  // Phase 30: particle + shake event listeners
+  events.on(EV.CITIZEN_DIED, ({ citizen }) => {
+    spawnDeathPuff(citizen.x, citizen.y);
+    triggerShake(2);
+  });
+  events.on(EV.ENEMY_DIED ?? 'ENEMY_DIED', ({ enemy }) => {
+    spawnDeathPuff(enemy.x, enemy.y);
+  });
+  events.on(EV.BUILDING_DAMAGED, ({ building }) => {
+    const bx = (building.tx + building.w / 2) * 32;
+    const by = (building.ty + building.h / 2) * 32;
+    spawnHitSparks(bx, by);
+  });
+  events.on(EV.CITIZEN_LEVELED_UP ?? 'CITIZEN_LEVELED_UP', ({ citizen }) => {
+    spawnLevelUpBurst(citizen.x, citizen.y);
+  });
+  events.on(EV.RESOURCE_HARVESTED ?? 'RESOURCE_HARVESTED', ({ x, y }) => {
+    if (x != null && y != null) spawnHarvestGlint(x, y);
+  });
+  events.on(EV.PROJECTILE_HIT ?? 'PROJECTILE_HIT', ({ x, y, isCatapult }) => {
+    if (isCatapult) { spawnCatapultSplash(x, y); triggerShake(8); }
+    else spawnHitSparks(x, y);
+  });
+
+  // Phase 16: reset timer clock whenever a phase transition fires
+  events.on(EV.WAVE_STARTED,  () => resetTimer(PHASE.PREVIEW));
+  events.on(EV.COMBAT_STARTED,() => resetTimer(PHASE.COMBAT));
+  events.on(EV.COMBAT_ENDED,  () => resetTimer(PHASE.AFTERMATH));
+  events.on(EV.WAVE_ENDED,    () => resetTimer(PHASE.BUILD));
+
   console.log('[Resources] Starting inventory:', JSON.stringify(resources));
   startLoop(update, render);
-  console.log('[Medieval Survival] Phase 9 — Citizens online');
+  console.log('[Medieval Survival] Phase 16 — Phase/Wave state machine online');
+}
+
+function boot() {
+  initGameOver();          // registers CITIZEN_DIED / GAME_OVER listeners immediately
+  initStartScreen(start);  // shows start screen; calls start() on "Begin"
 }
 
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', start);
+  document.addEventListener('DOMContentLoaded', boot);
 } else {
-  start();
+  boot();
 }
 
 export { events, EV, camera };

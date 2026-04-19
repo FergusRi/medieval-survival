@@ -8,7 +8,8 @@ import { T } from '../world/tiles.js';
 import { canAfford, spend, BUILDING_COSTS } from '../resources/resources.js';
 import { events, EV } from '../engine/events.js';
 import { camera } from '../engine/camera.js';
-import { getBuildingSprite, SPRITE_EXTRA_ROWS_ABOVE } from '../sprites/building_sprites.js';
+import { drawBuildingSprite, SPRITE_EXTRA_ROWS_ABOVE } from '../sprites/building_sprites.js';
+import { drawScaffold, drawRubble } from '../sprites/effect_sprites.js';
 import { ROTATABLE_BUILDINGS } from './building.js';
 
 // All placed buildings: Map<id, Building>
@@ -61,6 +62,14 @@ export function startGhost(type) { ghostType = type; ghostRotation = 0; }
 export function cancelGhost()    { ghostType = null; ghostRotation = 0; }
 export function getGhostType()   { return ghostType; }
 
+/** Remove a building from the world (called on destruction). */
+export function destroyBuilding(building) {
+  if (!placedBuildings.has(building.id)) return;
+  placedBuildings.delete(building.id);
+  for (const { tx, ty } of building.footprintTiles) occupiedTiles.delete(tileKey(tx, ty));
+  events.emit(EV.TILE_PASSABILITY_CHANGED, { tiles: building.footprintTiles });
+}
+
 export function updateGhostPos(screenX, screenY) {
   const world = camera.screenToWorld(screenX, screenY);
   ghostTX = Math.floor(world.x / TILE);
@@ -95,47 +104,93 @@ export function handleBuildClick(screenX, screenY) {
  *   - Width       = w * TILE
  * This makes the roof appear to rise above the footprint naturally.
  */
-export function drawBuilding(ctx, b) {
-  const sprite = b.state === 'complete' ? getBuildingSprite(b.type) : null;
-  const isRotated = b.rotation === 1; // vertical orientation
+/** Derive sprite state string from a building instance. */
+function _spriteState(b) {
+  if (b.state === 'rubble')    return 'rubble';
+  if (b.state !== 'complete')  return 'blueprint';
+  const pct = b.hp / b.maxHp;
+  if (pct < 0.2) return 'critical';
+  if (pct < 0.5) return 'damaged';
+  return 'complete';
+}
 
-  // 2.5D dimensions (anchor at front-face baseline)
+export function drawBuilding(ctx, b) {
+  // 2.5D dimensions — visual area extends SPRITE_EXTRA_ROWS_ABOVE above footprint
   const drawX = b.tx * TILE;
   const drawW = b.w  * TILE;
   const drawY = (b.ty - SPRITE_EXTRA_ROWS_ABOVE) * TILE;
   const drawH = (b.h  + SPRITE_EXTRA_ROWS_ABOVE) * TILE;
 
-  if (sprite) {
-    ctx.imageSmoothingEnabled = false;
-    if (isRotated) {
-      // Rotate 90° around the centre of the draw area
-      const cx = drawX + drawW / 2;
-      const cy = drawY + drawH / 2;
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(Math.PI / 2);
-      ctx.drawImage(sprite, -drawW / 2, -drawH / 2, drawW, drawH);
-      ctx.restore();
-    } else {
-      ctx.drawImage(sprite, drawX, drawY, drawW, drawH);
-    }
-  } else {
-    // Fallback: coloured rectangle for footprint
-    const px = b.tx * TILE;
-    const py = b.ty * TILE;
-    const pw = b.w  * TILE;
-    const ph = b.h  * TILE;
-    ctx.fillStyle = b.state === 'complete' ? 'rgba(160,100,40,0.85)' : 'rgba(100,140,200,0.7)';
-    ctx.fillRect(px, py, pw, ph);
-    ctx.strokeStyle = b.state === 'complete' ? '#8b5e20' : '#4a80c0';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(px, py, pw, ph);
-    ctx.fillStyle = '#fff';
-    ctx.font = `${Math.max(8, TILE * 0.35)}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(BUILDINGS[b.type]?.name ?? b.type, px + pw / 2, py + ph / 2);
+  // Footprint pixel coords (for scaffold / rubble overlays)
+  const fpX = b.tx * TILE;
+  const fpY = b.ty * TILE;
+  const fpW = b.w  * TILE;
+  const fpH = b.h  * TILE;
+
+  const spriteState = _spriteState(b);
+
+  if (spriteState === 'rubble') {
+    drawRubble(ctx, fpX, fpY, fpW, fpH);
+    return;
   }
+
+  // Rotate 90° for vertical-orientation buildings
+  const isRotated = b.rotation === 1;
+  if (isRotated) {
+    const cx = drawX + drawW / 2;
+    const cy = drawY + drawH / 2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(Math.PI / 2);
+    drawBuildingSprite(ctx, b.type, spriteState, -drawW / 2, -drawH / 2, drawW, drawH);
+    ctx.restore();
+  } else {
+    drawBuildingSprite(ctx, b.type, spriteState, drawX, drawY, drawW, drawH);
+  }
+
+  // Scaffold overlay for blueprint / under-construction buildings
+  if (b.state !== 'complete' && b.state !== 'rubble') {
+    const progress = b.maxHp > 0 ? Math.max(0, 1 - b.hp / b.maxHp) : 0;
+    drawScaffold(ctx, fpX, fpY, fpW, fpH, progress);
+  }
+}
+
+/**
+ * Draw damage flash overlay + HP bar for damaged complete buildings.
+ * Called immediately after drawBuilding() in the Y-sorted pass.
+ */
+export function drawBuildingDamageOverlay(ctx, b, dt) {
+  if (b.state !== 'complete') return;
+  if (b.hp >= b.maxHp) return; // undamaged — skip
+
+  const px = b.tx * TILE;
+  const py = b.ty * TILE;
+  const pw = b.w  * TILE;
+  const ph = b.h  * TILE;
+
+  // Tick down flash timer
+  if (b._flashTimer > 0) {
+    b._flashTimer -= dt / 1000;
+    if (b._flashTimer > 0) {
+      // Red flash overlay fading out
+      const alpha = Math.min(0.55, b._flashTimer * 2.5);
+      ctx.save();
+      ctx.fillStyle = `rgba(255,60,30,${alpha})`;
+      ctx.fillRect(px, py, pw, ph);
+      ctx.restore();
+    }
+  }
+
+  // HP bar above building
+  const pct  = b.hp / b.maxHp;
+  const barW = pw;
+  const barH = 4;
+  const bx   = px;
+  const by   = py - barH - 2;
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(bx, by, barW, barH);
+  ctx.fillStyle = pct > 0.6 ? '#2ecc71' : pct > 0.3 ? '#f39c12' : '#e74c3c';
+  ctx.fillRect(bx, by, barW * pct, barH);
 }
 
 /**

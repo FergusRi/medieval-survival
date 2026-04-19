@@ -2,6 +2,7 @@
 // building.js — Base building class
 // ============================================================
 import { BUILDINGS } from './registry.js';
+import { createSoilTiles } from '../farming/farm.js';
 
 // Wall types that support rotation
 export const ROTATABLE_BUILDINGS = new Set(['palisade', 'stone_wall', 'fortress_wall', 'wooden_gate', 'gatehouse']);
@@ -22,6 +23,13 @@ export class Building {
     this.buildProgress = 0;
     this.state = def.buildTime === 0 ? 'complete' : 'blueprint';
     this.sortY = (ty + def.h) * 32;
+    // Combat state
+    this._flashTimer = 0; // seconds remaining of damage flash
+    // Farm Plot: per-tile soil state grid
+    if (type === 'farm_plot') {
+      this.soilTiles    = createSoilTiles(def.w * def.h);
+      this.selectedCrop = 'wheat';
+    }
   }
   get footprintTiles() {
     const tiles = [];
