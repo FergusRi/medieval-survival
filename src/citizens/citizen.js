@@ -7,6 +7,8 @@ import * as names from './names.js';
 import { getTile, MAP_SIZE } from '../world/map.js';
 import { T } from '../world/tiles.js';
 import { events, EV } from '../engine/events.js';
+import { placedBuildings } from '../buildings/placement.js';
+import { applyBuildWork } from '../buildings/construction.js';
 
 const TILE = 32;
 const WANDER_RADIUS = 5; // tiles
@@ -26,6 +28,18 @@ const HAT_COLOURS = [
 ];
 
 let _citizenIndex = 0;
+
+function findNearestBlueprint(cx, cy) {
+  let best = null, bestDist = Infinity;
+  for (const b of placedBuildings.values()) {
+    if (b.state !== 'blueprint') continue;
+    const bx = b.tx * TILE + (b.w * TILE) / 2;
+    const by = b.ty * TILE + (b.h * TILE) / 2;
+    const dist = Math.hypot(bx - cx, by - cy);
+    if (dist < bestDist) { bestDist = dist; best = b; }
+  }
+  return best;
+}
 
 function randomWanderTarget(cx, cy) {
   for (let attempt = 0; attempt < 20; attempt++) {
@@ -79,10 +93,51 @@ export class Citizen {
     const dtS = dt / 1000;
     this._idleTimer -= dt;
 
-    // Pick wander target if idle
+    // ── Check for nearby blueprints (highest priority) ────────
     if (this.state === 'IDLE' && !this.target && this._idleTimer <= 0) {
-      this.target = randomWanderTarget(this.x, this.y);
-      this._idleTimer = 1500 + Math.random() * 2500;
+      const bp = findNearestBlueprint(this.x, this.y);
+      if (bp) {
+        // Walk to building centre
+        this.state = 'BUILDING';
+        this._buildTarget = bp;
+        this.target = {
+          x: bp.tx * TILE + (bp.w * TILE) / 2,
+          y: bp.ty * TILE + (bp.h * TILE) / 2,
+        };
+      } else {
+        this.target = randomWanderTarget(this.x, this.y);
+        this._idleTimer = 1500 + Math.random() * 2500;
+      }
+    }
+
+    // ── If BUILDING and arrived, do work ──────────────────────
+    if (this.state === 'BUILDING') {
+      const bp = this._buildTarget;
+      // Blueprint was completed by someone else
+      if (!bp || bp.state !== 'blueprint') {
+        this.state = 'IDLE';
+        this._buildTarget = null;
+        this.target = null;
+      } else {
+        // Keep walking toward centre until close enough
+        const bx = bp.tx * TILE + (bp.w * TILE) / 2;
+        const by = bp.ty * TILE + (bp.h * TILE) / 2;
+        const dist = Math.hypot(bx - this.x, by - this.y);
+        if (dist < TILE * 1.5) {
+          // Arrived — do build work
+          this.target = null;
+          this._moving = false;
+          this._buildTime = (this._buildTime || 0) + dt;
+          // Hammer animation: oscillate facing
+          this.facing = Math.sin(this._buildTime * 0.005) >= 0 ? 1 : -1;
+          applyBuildWork(bp, dtS);
+          this.sortY = this.y + 4;
+          return; // skip normal movement this tick
+        } else if (!this.target) {
+          // Re-target if we lost it
+          this.target = { x: bx, y: by };
+        }
+      }
     }
 
     this._moving = false;
@@ -96,6 +151,8 @@ export class Citizen {
         this.x = this.target.x;
         this.y = this.target.y;
         this.target = null;
+        if (this.state === 'BUILDING') { /* will do work next tick */ }
+        else this.state = 'IDLE';
       } else {
         const spd = Math.min(this.speed * dtS, dist);
         this.x += (dx / dist) * spd;
@@ -179,8 +236,13 @@ export class Citizen {
     ctx.lineWidth = 2;
     ctx.strokeStyle = this.skinColour;
 
+    const isBuilding = this.state === 'BUILDING' && !this._moving;
+    const hammerT    = isBuilding ? (this._buildTime || 0) * 0.005 : 0;
+    // Hammer arm: right arm swings up/down rapidly
+    const hammerSwing = isBuilding ? Math.sin(hammerT * 3) * 0.9 : 0;
+
     // Left arm
-    const laAngle = armSwing;
+    const laAngle = isBuilding ? 0.2 : armSwing;
     ctx.beginPath();
     ctx.moveTo(cx - bodyW / 2, bodyY);
     ctx.lineTo(
@@ -189,15 +251,22 @@ export class Citizen {
     );
     ctx.stroke();
 
-    // Right arm
-    const raAngle = -armSwing;
+    // Right arm (hammer swing when building)
+    const raAngle = isBuilding ? -hammerSwing : -armSwing;
+    const raEndX = cx + bodyW / 2 + armL * 0.5 + Math.sin(raAngle) * armL * f;
+    const raEndY = bodyY + 1 + Math.cos(raAngle) * armL * 0.5;
     ctx.beginPath();
     ctx.moveTo(cx + bodyW / 2, bodyY);
-    ctx.lineTo(
-      cx + bodyW / 2 + armL * 0.5 + Math.sin(raAngle) * armL * f,
-      bodyY + 1 + Math.cos(raAngle) * armL * 0.5
-    );
+    ctx.lineTo(raEndX, raEndY);
     ctx.stroke();
+
+    // Draw tiny hammer head at arm tip when building
+    if (isBuilding) {
+      ctx.fillStyle = '#888';
+      ctx.fillRect(raEndX - 2, raEndY - 1, 4, 2);
+      ctx.fillStyle = '#c8a060';
+      ctx.fillRect(raEndX - 1, raEndY, 2, 3);
+    }
 
     // ── Head ──────────────────────────────────────────────────
     ctx.fillStyle = this.skinColour;
