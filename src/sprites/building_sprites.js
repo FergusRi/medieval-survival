@@ -17,10 +17,7 @@ const SPRITE_DEFS = {
   settlement:    'assets/buildings/settlement.jpg',
   settlement_hall: 'assets/buildings/settlement.jpg',
   capital:       'assets/buildings/capital.jpg',
-  palisade:      'assets/buildings/palisade.jpg',
-  stone_wall:    'assets/buildings/palisade.jpg', // reuse until stone variant generated
-  fortress_wall: 'assets/buildings/palisade.jpg', // reuse until fortress variant generated
-  wooden_gate:   'assets/buildings/palisade.jpg',
+  // wall sprites removed — fallback coloured rectangles used until new sprites are ready
 };
 
 /**
