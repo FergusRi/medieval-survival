@@ -9,6 +9,7 @@ import { canAfford, spend, BUILDING_COSTS } from '../resources/resources.js';
 import { events, EV } from '../engine/events.js';
 import { camera } from '../engine/camera.js';
 import { getBuildingSprite, SPRITE_EXTRA_ROWS_ABOVE } from '../sprites/building_sprites.js';
+import { ROTATABLE_BUILDINGS } from './building.js';
 
 // All placed buildings: Map<id, Building>
 export const placedBuildings = new Map();
@@ -17,6 +18,14 @@ const occupiedTiles = new Set();
 
 let ghostType = null; // currently selected building type
 let ghostTX = 0, ghostTY = 0;
+let ghostRotation = 0; // 0 = horizontal, 1 = vertical
+
+export function cycleGhostRotation() {
+  if (ghostType && ROTATABLE_BUILDINGS.has(ghostType)) {
+    ghostRotation = ghostRotation === 0 ? 1 : 0;
+  }
+}
+export function getGhostRotation() { return ghostRotation; }
 
 const PLACEABLE = new Set([T.GRASS, T.DIRT, T.SCRUBLAND]);
 const TILE = 32;
@@ -48,8 +57,8 @@ function isValidPlacement(type, tx, ty) {
   return true;
 }
 
-export function startGhost(type) { ghostType = type; }
-export function cancelGhost()    { ghostType = null; }
+export function startGhost(type) { ghostType = type; ghostRotation = 0; }
+export function cancelGhost()    { ghostType = null; ghostRotation = 0; }
 export function getGhostType()   { return ghostType; }
 
 export function updateGhostPos(screenX, screenY) {
@@ -63,7 +72,7 @@ export function placeBuilding() {
   if (!isValidPlacement(ghostType, ghostTX, ghostTY)) return false;
   const cost = BUILDING_COSTS[ghostType];
   if (cost) spend(cost);
-  const b = new Building(ghostType, ghostTX, ghostTY);
+  const b = new Building(ghostType, ghostTX, ghostTY, ghostRotation);
   placedBuildings.set(b.id, b);
   for (const { tx, ty } of b.footprintTiles) occupiedTiles.add(tileKey(tx, ty));
   events.emit(EV.BUILDING_PLACED, { building: b });
@@ -88,19 +97,30 @@ export function handleBuildClick(screenX, screenY) {
  */
 export function drawBuilding(ctx, b) {
   const sprite = b.state === 'complete' ? getBuildingSprite(b.type) : null;
+  const isRotated = b.rotation === 1; // vertical orientation
 
-  // 2.5D dimensions
+  // 2.5D dimensions (anchor at front-face baseline)
   const drawX = b.tx * TILE;
   const drawW = b.w  * TILE;
-  // Sprite extends SPRITE_EXTRA_ROWS_ABOVE tiles above the footprint top
   const drawY = (b.ty - SPRITE_EXTRA_ROWS_ABOVE) * TILE;
   const drawH = (b.h  + SPRITE_EXTRA_ROWS_ABOVE) * TILE;
 
   if (sprite) {
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(sprite, drawX, drawY, drawW, drawH);
+    if (isRotated) {
+      // Rotate 90° around the centre of the draw area
+      const cx = drawX + drawW / 2;
+      const cy = drawY + drawH / 2;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(Math.PI / 2);
+      ctx.drawImage(sprite, -drawW / 2, -drawH / 2, drawW, drawH);
+      ctx.restore();
+    } else {
+      ctx.drawImage(sprite, drawX, drawY, drawW, drawH);
+    }
   } else {
-    // Fallback: coloured rectangle for the footprint only
+    // Fallback: coloured rectangle for footprint
     const px = b.tx * TILE;
     const py = b.ty * TILE;
     const pw = b.w  * TILE;
@@ -110,7 +130,6 @@ export function drawBuilding(ctx, b) {
     ctx.strokeStyle = b.state === 'complete' ? '#8b5e20' : '#4a80c0';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(px, py, pw, ph);
-    // Label
     ctx.fillStyle = '#fff';
     ctx.font = `${Math.max(8, TILE * 0.35)}px sans-serif`;
     ctx.textAlign = 'center';

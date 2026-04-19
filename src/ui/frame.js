@@ -4,7 +4,8 @@
 // ============================================================
 import { resources } from '../resources/resources.js';
 import { events, EV } from '../engine/events.js';
-import { startGhost, cancelGhost } from '../buildings/placement.js';
+import { startGhost, cancelGhost, getGhostType, getGhostRotation } from '../buildings/placement.js';
+import { ROTATABLE_BUILDINGS } from '../buildings/building.js';
 import { BUILDINGS } from '../buildings/registry.js';
 import { BUILDING_COSTS } from '../resources/resources.js';
 
@@ -171,6 +172,8 @@ function buildTopBar() {
 }
 
 // ── Bottom bar ───────────────────────────────────────────────
+let rotateHintEl = null;
+
 function buildBottomBar() {
   const bar = document.createElement('div');
   bar.id = 'frame-bottom';
@@ -181,7 +184,24 @@ function buildBottomBar() {
   btn.addEventListener('click', () => isOpen ? closePanel() : openPanel());
   bar.appendChild(btn);
 
+  rotateHintEl = document.createElement('span');
+  rotateHintEl.id = 'rotate-hint';
+  rotateHintEl.style.cssText = 'margin-left:14px;font-size:11px;color:#d4a84b;font-family:sans-serif;display:none;';
+  bar.appendChild(rotateHintEl);
+
   document.body.appendChild(bar);
+
+  // Update rotate hint each frame
+  setInterval(() => {
+    const ghost = getGhostType();
+    if (ghost && ROTATABLE_BUILDINGS.has(ghost)) {
+      const rot = getGhostRotation();
+      rotateHintEl.textContent = `[R] Rotate  ·  ${rot === 0 ? '↔ Horizontal' : '↕ Vertical'}`;
+      rotateHintEl.style.display = 'inline';
+    } else {
+      rotateHintEl.style.display = 'none';
+    }
+  }, 100);
 }
 
 // ── Tooltip singleton ─────────────────────────────────────────

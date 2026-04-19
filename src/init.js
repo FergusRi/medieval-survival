@@ -13,7 +13,7 @@ import { T, TILE_DEF } from './world/tiles.js';
 import { preloadSprites, getTileSprite, getTreeSprite, PINE_TILES } from './sprites/tile_sprites.js';
 import { preloadBuildingSprites } from './sprites/building_sprites.js';
 import { resources } from './resources/resources.js';
-import { renderBuildings, drawBuilding, buildingSortY, placedBuildings, updateGhostPos, handleBuildClick, cancelGhost, getGhostType } from './buildings/placement.js';
+import { renderBuildings, drawBuilding, buildingSortY, placedBuildings, updateGhostPos, handleBuildClick, cancelGhost, getGhostType, cycleGhostRotation } from './buildings/placement.js';
 import { renderConstruction } from './buildings/construction.js';
 import { initFrame, TOP_BAR_H, BOTTOM_BAR_H } from './ui/frame.js';
 import { updateCitizens, spawnCitizens, citizens } from './citizens/citizen.js';
@@ -77,6 +77,12 @@ function setupBuildInput() {
   canvas.addEventListener('contextmenu', e => {
     e.preventDefault();
     cancelGhost();
+  });
+
+  window.addEventListener('keydown', e => {
+    if ((e.key === 'r' || e.key === 'R') && getGhostType()) {
+      cycleGhostRotation();
+    }
   });
 }
 

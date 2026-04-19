@@ -3,11 +3,16 @@
 // ============================================================
 import { BUILDINGS } from './registry.js';
 
+// Wall types that support rotation
+export const ROTATABLE_BUILDINGS = new Set(['palisade', 'stone_wall', 'fortress_wall', 'wooden_gate', 'gatehouse']);
+
 export class Building {
-  constructor(type, tx, ty) {
+  constructor(type, tx, ty, rotation = 0) {
     this.id   = crypto.randomUUID();
     this.type = type;
     const def = BUILDINGS[type];
+    // rotation: 0 = horizontal (E-W), 1 = vertical (N-S)
+    this.rotation = ROTATABLE_BUILDINGS.has(type) ? rotation : 0;
     this.tx = tx; this.ty = ty;
     this.w  = def.w; this.h  = def.h;
     this.hp = def.hp; this.maxHp = def.hp;
