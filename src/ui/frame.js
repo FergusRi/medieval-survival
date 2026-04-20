@@ -10,7 +10,7 @@ import { BUILDINGS } from '../buildings/registry.js';
 import { BUILDING_COSTS } from '../resources/resources.js';
 
 export const TOP_BAR_H    = 36;
-export const BOTTOM_BAR_H = 52;
+export const BOTTOM_BAR_H = 116;
 
 const ICONS = { food:'🌾', wood:'🪵', stone:'🪨', metal:'⚙️', gold:'💰', medicine:'🧪' };
 

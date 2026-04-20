@@ -30,7 +30,8 @@ import './enemies/waves.js'; // activate COMBAT_STARTED → spawnWave listener
 import { updateTowers, removeTowerCooldown } from './combat/towers.js';
 import { updateProjectiles, drawProjectiles, projectiles } from './combat/projectiles.js';
 import { initHUD, updateHUDTimer } from './ui/hud.js';
-import { initInfoPanel, refreshInfoPanel } from './ui/panels.js';
+import { initColonistBar, updateColonistBar } from './ui/colonist_bar.js';
+import { initInfoPanel, refreshInfoPanel, openCitizenPanel } from './ui/panels.js';
 import { initAftermath } from './ui/aftermath.js';
 import { initStartScreen } from './screens/start.js';
 import { initGameOver }    from './screens/gameover.js';
@@ -341,6 +342,7 @@ function render() {
   ctx.restore();
 
   updateHUDTimer();
+  updateColonistBar();
   refreshInfoPanel();
   endFrame();
   drawMinimap();
@@ -362,6 +364,7 @@ async function start() {
 
   initFrame();
   initHUD();
+  initColonistBar(openCitizenPanel);
   initInfoPanel();
   initAftermath();
   initMinimap();
