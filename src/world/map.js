@@ -94,17 +94,6 @@ export function generateMap(seed = Date.now()) {
     }
   }
 
-  // Pass 2: scatter STONE tiles on walkable ground (~5% of GRASS/PLAINS/SCRUBLAND)
-  const STONE_RATE = 0.05;
-  const STONE_ELIGIBLE = new Set([T.GRASS, T.SCRUBLAND, T.DIRT]);
-  for (let ty = 0; ty < MAP_SIZE; ty++) {
-    for (let tx = 0; tx < MAP_SIZE; tx++) {
-      if (!STONE_ELIGIBLE.has(getTile(tx, ty))) continue;
-      if (tileHash(MAP_SEED, tx, ty) / 0xFFFFFFFF < STONE_RATE) {
-        setTile(tx, ty, T.STONE);
-      }
-    }
-  }
 
   events.emit(EV.MAP_LOADED, { width: MAP_SIZE, height: MAP_SIZE });
   console.log('[map] generated — 500×500, seed=' + seed);
