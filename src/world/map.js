@@ -62,9 +62,9 @@ function whittaker(e, m, t) {
 
 // Tiles eligible for tree/rock decoration placement
 const TREE_ELIGIBLE = new Set([T.GRASS, T.FOREST, T.SCRUBLAND]);
-const ROCK_ELIGIBLE = new Set([T.GRASS, T.SCRUBLAND, T.DIRT, T.SAND]);
-const TREE_RATE     = 0.06;  // ~6% of eligible tiles get a tree
-const ROCK_RATE     = 0.025; // ~2.5% of eligible tiles get a rock
+const ROCK_ELIGIBLE = new Set([T.GRASS, T.SCRUBLAND, T.DIRT]);
+const TREE_RATE     = 0.03;  // ~3% of eligible tiles get a tree
+const ROCK_RATE     = 0.0125; // ~1.25% of eligible tiles get a rock
 
 // ---- Map generation ------------------------------------------
 export let MAP_SEED = 0;
