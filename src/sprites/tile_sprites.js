@@ -13,7 +13,7 @@ const treeLoaded = new Map(); // name   → ImageBitmap
 // Each theme defines tile path overrides. Unspecified tiles
 // fall back to the BASE_VARIANTS defaults below.
 const BASE_VARIANTS = {
-  [T.GRASS]:          ['assets/tiles/grass.png', 'assets/tiles/grass2.png'],
+  [T.GRASS]:          ['assets/tiles/grass.png'],
   [T.DIRT]:           ['assets/tiles/dirt.png'],
   [T.SAND]:           ['assets/tiles/sand.png'],
   [T.SCRUBLAND]:      ['assets/tiles/scrubland.png'],
