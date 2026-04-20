@@ -455,16 +455,70 @@ function _renderBuildingPanel(b) {
 }
 
 // ── Citizen panel render ─────────────────────────────────────
+
+// ── Rich task description for citizen detail panel ──────────
+function _tileCoord(worldX, worldY) {
+  const TILE_SIZE = 64;
+  const tx = Math.floor(worldX / TILE_SIZE);
+  const ty = Math.floor(worldY / TILE_SIZE);
+  const col = String.fromCharCode(65 + (tx % 26));
+  return `${col}${ty + 1}`;
+}
+
+function _describeTask(c) {
+  switch (c.state) {
+    case 'IDLE':
+      return c._idleTimer > 0 ? '💤 Resting' : '💤 Looking for work';
+    case 'GATHERING': {
+      const node = c._gatherNode;
+      const kind = c._gatherType === 'wood' ? '🪵 Chopping wood' : '🪨 Mining stone';
+      if (node) {
+        const coord = _tileCoord(node.cx, node.cy);
+        const pct = Math.round((node.amount / node.maxAmount) * 100);
+        return `${kind} at ${coord} (${pct}% remaining)`;
+      }
+      return c._gatherType === 'wood' ? '🪵 Searching for wood' : '🪨 Searching for stone';
+    }
+    case 'BUILDING': {
+      const bp = c._buildTarget;
+      if (bp) {
+        const coord = _tileCoord(bp.tx * 64, bp.ty * 64);
+        return `🔨 Constructing ${bp.type ?? 'building'} at ${coord}`;
+      }
+      return '🔨 Building';
+    }
+    case 'COMBAT': {
+      const en = c.combatTarget;
+      if (en) {
+        const coord = _tileCoord(en.x, en.y);
+        return `⚔️ Fighting enemy at ${coord}`;
+      }
+      return '⚔️ In combat';
+    }
+    case 'FARMING':
+      return '🌾 Farming';
+    case 'GUARDING':
+      return '🛡️ On guard duty';
+    case 'WANDERING':
+      return '🚶 Wandering';
+    default:
+      return c.state;
+  }
+}
+
 function _renderCitizenPanel(c) {
   const hpMax    = 100;
   const hpPct    = Math.max(0, Math.min(1, c.hp / hpMax));
   const hpColour = hpPct > 0.6 ? '#4caf50' : hpPct > 0.3 ? '#ff9800' : '#f44336';
 
   const stateBadgeColour = {
-    IDLE:     '#607d8b',
-    BUILDING: '#ff9800',
-    WORKING:  '#4caf50',
-    COMBAT:   '#f44336',
+    IDLE:      '#607d8b',
+    BUILDING:  '#ff9800',
+    GATHERING: '#c8a030',
+    FARMING:   '#5cb85c',
+    GUARDING:  '#9b59b6',
+    COMBAT:    '#f44336',
+    WANDERING: '#78909c',
   }[c.state] ?? '#607d8b';
 
   const skillBars = Object.entries(SKILL_LABELS).map(([key, label]) => {
@@ -494,7 +548,7 @@ function _renderCitizenPanel(c) {
     <div class="panel-sub" style="margin-bottom:6px;">Citizen</div>
 
     <span class="state-badge" style="background:${stateBadgeColour}22;color:${stateBadgeColour};border:1px solid ${stateBadgeColour}66;">
-      ${c.state}
+      ${_describeTask(c)}
     </span>
 
     <div class="panel-section">Health</div>
