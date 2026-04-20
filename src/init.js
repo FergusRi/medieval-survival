@@ -136,7 +136,7 @@ function update(dt) {
   updateTowers(dt, placedBuildings, enemies);
   updateProjectiles(dt, enemies);
   updateEnemies(dt, placedBuildings, citizens);
-  checkLoss();
+  if (getCurrentPhase() !== PHASE.BUILD) checkLoss();
   // Rebuild spatial grid after all positions are updated
   spatialGrid.rebuild(citizens, placedBuildings.values());
   updateParticles(dt);
