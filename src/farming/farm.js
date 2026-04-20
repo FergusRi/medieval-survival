@@ -244,7 +244,7 @@ export function drawFarmPlot(ctx, building, camera) {
 
 // ── Event wiring ─────────────────────────────────────────────
 
-import { placedBuildings } from '../buildings/building.js';
+import { placedBuildings } from '../buildings/placement.js';
 
 events.on(EV.WAVE_STARTED, () => {
   applySprinklers(placedBuildings);
