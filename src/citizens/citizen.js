@@ -15,6 +15,8 @@ import { craftedWeapons, takeWeapon, WEAPONS } from '../items/weapons.js';
 import { GUARDHOUSE_PATROL_RADIUS } from '../resources/resources.js';
 import { drawGrave } from '../sprites/effect_sprites.js';
 import { getTunicColour, drawWeaponOverlay } from '../sprites/citizen_sprites.js';
+import { getNearestNode, claimNode, releaseNode, checkAndHarvest } from '../world/resource_nodes.js';
+import { earn } from '../resources/resources.js';
 // enemies imported lazily to avoid circular dep — accessed via getter below
 let _enemiesRef = null;
 export function setCitizenEnemyRef(arr) { _enemiesRef = arr; }
@@ -133,6 +135,12 @@ export class Citizen {
     // Combat
     this.attackCooldown = 0;
     this.combatTarget   = null;
+
+    // Gathering
+    this._gatherNode   = null;
+    this._gatherTimer  = 0;
+    this._gatherType   = null;  // 'wood' or 'stone'
+    this._gatherRetry  = 0;     // countdown ms to retry finding a node
   }
 
   /** Take damage from an enemy attack. Returns true if citizen died. */
@@ -141,6 +149,8 @@ export class Citizen {
     if (this.hp <= 0) {
       this.hp   = 0;
       this.dead = true;
+      // Release any claimed resource node
+      if (this._gatherNode) { releaseNode(this._gatherNode); this._gatherNode = null; }
       events.emit(EV.CITIZEN_DIED, { citizen: this });
       return true;
     }
@@ -300,6 +310,74 @@ export class Citizen {
           this._idleTimer = 1500 + Math.random() * 2500;
         }
       }
+    }
+
+    // ── GATHERING state ──────────────────────────────────────
+    if (this.state === 'GATHERING') {
+      // Retry timer for when no node was available
+      if (!this._gatherNode) {
+        this._gatherRetry -= dt;
+        if (this._gatherRetry > 0) { this.sortY = this.y + 4; return; }
+        const node = getNearestNode(this.x, this.y, this._gatherType);
+        if (node && claimNode(node)) {
+          this._gatherNode  = node;
+          this._gatherTimer = 2000;
+          const goalTX = Math.floor(node.cx / TILE);
+          const goalTY = Math.floor(node.cy / TILE);
+          navigateTo(goalTX, goalTY);
+        } else {
+          this._gatherRetry = 5000; // retry in 5s
+        }
+        this.sortY = this.y + 4; return;
+      }
+
+      const node = this._gatherNode;
+      const dist = Math.hypot(node.cx - this.x, node.cy - this.y);
+
+      if (dist > TILE * 1.5) {
+        // Still walking to node
+        if (!this.target && this._waypoints.length === 0) {
+          const goalTX = Math.floor(node.cx / TILE);
+          const goalTY = Math.floor(node.cy / TILE);
+          navigateTo(goalTX, goalTY);
+        }
+        this.sortY = this.y + 4; return;
+      }
+
+      // Arrived — harvest
+      this.target = null; this._waypoints = []; this._moving = false;
+      this._gatherTimer -= dt;
+      // Swing animation
+      this.facing = Math.sin(this._gatherTimer * 0.005) >= 0 ? 1 : -1;
+
+      if (this._gatherTimer <= 0) {
+        // Harvest completion
+        const yieldAmt = node.type === 'wood' ? 8 : 5;
+        const actual = checkAndHarvest(node, yieldAmt);
+        releaseNode(node);
+        this._gatherNode = null;
+
+        if (actual > 0) {
+          const res = node.type === 'wood' ? { wood: actual } : { stone: actual };
+          earn(res);
+          awardXp(this, 'mining', 3 * actual / yieldAmt);
+          events.emit(EV.RESOURCE_HARVESTED, { x: this.x, y: this.y, type: node.type, amount: actual });
+        }
+
+        // Find next node
+        const next = getNearestNode(this.x, this.y, this._gatherType);
+        if (next && claimNode(next)) {
+          this._gatherNode  = next;
+          this._gatherTimer = 2000;
+          const goalTX = Math.floor(next.cx / TILE);
+          const goalTY = Math.floor(next.cy / TILE);
+          navigateTo(goalTX, goalTY);
+        } else {
+          this._gatherRetry = 5000;
+        }
+      }
+
+      this.sortY = this.y + 4; return;
     }
 
     // ── If BUILDING and arrived, do work ──────────────────────
@@ -530,6 +608,32 @@ events.on(EV.CITIZEN_DIED, ({ citizen }) => {
 });
 
 /** Draw all grave markers on the ground layer (call before Y-sort pass). */
+
+// ── Gather assignment listener ────────────────────────────────
+events.on(EV.CITIZEN_ASSIGNED, ({ citizen, task, gatherType }) => {
+  if (task !== 'gather') return;
+  // Release any existing node before reassigning
+  if (citizen._gatherNode) { releaseNode(citizen._gatherNode); citizen._gatherNode = null; }
+  citizen._gatherType  = gatherType;
+  citizen._gatherTimer = 0;
+  citizen._gatherRetry = 0;
+  citizen.state        = 'GATHERING';
+  citizen.target       = null;
+  citizen._waypoints   = [];
+  // Find and claim nearest node immediately
+  const node = getNearestNode(citizen.x, citizen.y, gatherType);
+  if (node && claimNode(node)) {
+    citizen._gatherNode  = node;
+    citizen._gatherTimer = 2000;
+    const goalTX = Math.floor(node.cx / 32);
+    const goalTY = Math.floor(node.cy / 32);
+    // Use pathfinder via navigateTo — citizen.js uses a local closure, so queue directly
+    citizen._waypoints = [{ x: node.cx, y: node.cy }];
+  } else {
+    citizen._gatherRetry = 5000;
+  }
+});
+
 export function renderGraves(ctx) {
   for (const g of graves) drawGrave(ctx, g.x, g.y);
 }

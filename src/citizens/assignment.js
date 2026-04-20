@@ -28,7 +28,9 @@ const PRODUCTION_BUILDINGS = new Set([
 // Max staff slots per building type (mirrors registry)
 const STAFF_SLOTS = {
   lumber_mill:   1,
+  lumber_camp:   2,   // gather wood
   quarry:        1,
+  pit_mine:      2,   // gather stone
   forge:         1,
   mint:          1,
   market:        1,
@@ -38,6 +40,12 @@ const STAFF_SLOTS = {
   watchtower:    1,
   farm_plot:     1,
 };
+
+// Buildings that trigger gather tasks instead of staffing
+const GATHER_BUILDINGS = new Map([
+  ['lumber_camp', 'wood'],
+  ['pit_mine',    'stone'],
+]);
 
 // ── Assignment state ─────────────────────────────────────────
 // Maps building id → Set of assigned citizen ids
@@ -70,7 +78,13 @@ export function assignCitizen(citizen, building, taskType = 'STAFFING') {
   _buildingStaff.get(building.id).add(citizen.id);
   citizen._assignment = { buildingId: building.id, taskType };
 
-  events.emit(EV.CITIZEN_ASSIGNED, { citizen, target: building, taskType });
+  // Gather buildings emit a specialised task event
+  const gatherType = GATHER_BUILDINGS.get(building.type);
+  if (gatherType) {
+    events.emit(EV.CITIZEN_ASSIGNED, { citizen, target: building, taskType: 'gather', task: 'gather', gatherType });
+  } else {
+    events.emit(EV.CITIZEN_ASSIGNED, { citizen, target: building, taskType });
+  }
 }
 
 export function unassignCitizen(citizen) {
@@ -164,6 +178,22 @@ events.on(EV.BUILDING_COMPLETED, ({ building }) => {
 events.on(EV.CITIZEN_SPAWNED, ({ citizen }) => {
   // Slight delay so citizen has a position before assignment
   setTimeout(() => tryAutoAssign(citizen), 500);
+});
+
+events.on(EV.BUILDING_DESTROYED, ({ building }) => {
+  const staff = _buildingStaff.get(building.id);
+  if (!staff) return;
+  for (const citizenId of staff) {
+    const c = citizens.find(c => c.id === citizenId);
+    if (!c) continue;
+    // Import releaseNode lazily to avoid circular dep
+    import('../world/resource_nodes.js').then(({ releaseNode }) => {
+      if (c._gatherNode) { releaseNode(c._gatherNode); c._gatherNode = null; }
+      c.state = 'IDLE';
+      c._assignment = null;
+    });
+  }
+  _buildingStaff.delete(building.id);
 });
 
 // ── Manual drag-assign helper ─────────────────────────────────

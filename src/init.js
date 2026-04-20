@@ -8,6 +8,7 @@ import { initRenderer, beginFrame, endFrame, getCtx } from './engine/renderer.js
 import { initInput, handleKeyPan } from './engine/input.js';
 import { camera } from './engine/camera.js';
 import { generateMap, getTile, MAP_SIZE, TILE_SIZE, MAP_PX, MAP_SEED } from './world/map.js';
+import { initResourceNodes } from './world/resource_nodes.js';
 import { initMinimap, drawMinimap } from './ui/minimap.js';
 import { T, TILE_DEF } from './world/tiles.js';
 import { preloadSprites, getTileSprite, getTreeSprite, PINE_TILES } from './sprites/tile_sprites.js';
@@ -337,6 +338,7 @@ async function start() {
   initRenderer();
   initInput();
   generateMap();
+  initResourceNodes();
   await preloadSprites();
   await preloadBuildingSprites();
   // Centre camera on the middle of the map (account for UI bars)
