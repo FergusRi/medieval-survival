@@ -11,7 +11,7 @@ import { generateMap, getTile, MAP_SIZE, TILE_SIZE, MAP_PX, MAP_SEED } from './w
 import { initResourceNodes } from './world/resource_nodes.js';
 import { initMinimap, drawMinimap } from './ui/minimap.js';
 import { T, TILE_DEF } from './world/tiles.js';
-import { preloadSprites, getTileSprite, getTreeSprite, getGrassVariant, PINE_TILES } from './sprites/tile_sprites.js';
+import { preloadSprites, getTileSprite, getTreeSprite, PINE_TILES } from './sprites/tile_sprites.js';
 import { preloadBuildingSprites } from './sprites/building_sprites.js';
 import { resources, initProduction } from './resources/resources.js';
 import { renderBuildings, drawBuilding, buildingSortY, placedBuildings, updateGhostPos, handleBuildClick, cancelGhost, getGhostType, cycleGhostRotation, destroyBuilding, drawBuildingDamageOverlay } from './buildings/placement.js';
@@ -159,8 +159,7 @@ function render() {
   const tx1 = Math.min(MAP_SIZE, Math.ceil (bottomRight.x / TILE_SIZE));
   const ty1 = Math.min(MAP_SIZE, Math.ceil (bottomRight.y / TILE_SIZE));
 
-  const stoneSprite         = getTileSprite(T.STONE);
-  const mountainStoneSprite = getTileSprite(T.MOUNTAIN_STONE);
+  // sprites fetched per-tile with chunk coords below
 
   // ── Pass 1: Ground tiles ─────────────────────────────────
   for (let ty = ty0; ty < ty1; ty++) {
@@ -171,16 +170,18 @@ function render() {
       const py  = ty * TILE_SIZE;
 
       if (id === T.STONE) {
-        const grassBase = getGrassVariant(tx, ty);
+        const grassBase = getTileSprite(T.GRASS, tx, ty);
         if (grassBase) ctx.drawImage(grassBase, px, py, TILE_SIZE, TILE_SIZE);
         else { ctx.fillStyle = TILE_DEF[T.GRASS].colour; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE); }
-        if (stoneSprite) ctx.drawImage(stoneSprite, px, py, TILE_SIZE, TILE_SIZE);
+        const stSpr = getTileSprite(T.STONE, tx, ty);
+        if (stSpr) ctx.drawImage(stSpr, px, py, TILE_SIZE, TILE_SIZE);
         continue;
       }
 
       if (MOUNTAIN_TILES.has(id)) {
         if (isMountainEdge(tx, ty)) {
-          if (mountainStoneSprite) ctx.drawImage(mountainStoneSprite, px, py, TILE_SIZE, TILE_SIZE);
+          const msSprite = getTileSprite(T.MOUNTAIN_STONE, tx, ty);
+          if (msSprite) ctx.drawImage(msSprite, px, py, TILE_SIZE, TILE_SIZE);
           else { ctx.fillStyle = TILE_DEF[T.MOUNTAIN_STONE].colour; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE); }
         } else {
           ctx.fillStyle = TILE_DEF[T.MOUNTAIN].colour;
@@ -190,7 +191,7 @@ function render() {
       }
 
       if (id === T.GRASS) {
-        const grassV = getGrassVariant(tx, ty);
+        const grassV = getTileSprite(T.GRASS, tx, ty);
         if (grassV) ctx.drawImage(grassV, px, py, TILE_SIZE, TILE_SIZE);
         else { ctx.fillStyle = def.colour; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE); }
         continue;
@@ -206,7 +207,7 @@ function render() {
         continue;
       }
 
-      const sprite = getTileSprite(id);
+      const sprite = getTileSprite(id, tx, ty);
       if (sprite) ctx.drawImage(sprite, px, py, TILE_SIZE, TILE_SIZE);
       else { ctx.fillStyle = def ? def.colour : '#000'; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE); }
     }
