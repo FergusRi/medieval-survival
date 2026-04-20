@@ -11,7 +11,7 @@ import { placedBuildings } from '../buildings/placement.js';
 import { applyBuildWork } from '../buildings/construction.js';
 import { findPath } from '../world/pathfinder.js';
 import { isInCombat } from '../phases/phases.js';
-import { craftedWeapons, takeWeapon, WEAPONS } from '../items/weapons.js';
+import { craftedWeapons, takeWeapon } from '../items/weapons.js';
 import { GUARDHOUSE_PATROL_RADIUS } from '../resources/resources.js';
 import { drawGrave } from '../sprites/effect_sprites.js';
 import { getTunicColour, drawWeaponOverlay } from '../sprites/citizen_sprites.js';
@@ -249,39 +249,38 @@ export class Citizen {
       }
     }
 
-    // ── Armory weapon pickup (unarmed + weapons available) ───
+    // ── Weapon pickup from barracks (unarmed + weapons available) ───
     if (this.state === 'IDLE' && !this.weapon && !this.target &&
         this._waypoints.length === 0 && craftedWeapons.length > 0) {
-      // Find nearest complete armory within 3 tiles (96px)
-      const ARMORY_SCAN = 96;
-      let nearestArmory = null, nearestDist = Infinity;
+      // Find nearest complete barracks within 5 tiles (160px)
+      const BARRACKS_SCAN = 160;
+      let nearestBarracks = null, nearestDist = Infinity;
       for (const b of placedBuildings.values()) {
-        if (b.type !== 'armory' || b.state !== 'complete') continue;
+        if (b.type !== 'barracks' || b.state !== 'complete') continue;
         const ax = b.tx * TILE + (b.w * TILE) / 2;
         const ay = b.ty * TILE + (b.h * TILE) / 2;
         const dist = Math.hypot(ax - this.x, ay - this.y);
-        if (dist < nearestDist) { nearestDist = dist; nearestArmory = b; }
+        if (dist < nearestDist) { nearestDist = dist; nearestBarracks = b; }
       }
-      if (nearestArmory && nearestDist <= ARMORY_SCAN) {
+      if (nearestBarracks && nearestDist <= BARRACKS_SCAN) {
         const weapon = takeWeapon();
         if (weapon) {
           this.weapon = weapon.def;
           events.emit(EV.WEAPON_EQUIPPED, { citizen: this, weapon });
         }
-      } else if (nearestArmory) {
-        // Walk toward nearest armory
-        const goalTX = Math.floor((nearestArmory.tx * TILE + (nearestArmory.w * TILE) / 2) / TILE);
-        const goalTY = Math.floor((nearestArmory.ty * TILE + (nearestArmory.h * TILE) / 2) / TILE);
+      } else if (nearestBarracks) {
+        // Walk toward nearest barracks
+        const goalTX = Math.floor((nearestBarracks.tx * TILE + (nearestBarracks.w * TILE) / 2) / TILE);
+        const goalTY = Math.floor((nearestBarracks.ty * TILE + (nearestBarracks.h * TILE) / 2) / TILE);
         navigateTo(goalTX, goalTY);
       }
     }
 
     // ── Check for nearby blueprints (highest priority) ────────
     if (this.state === 'IDLE' && !this.target && this._waypoints.length === 0 && this._idleTimer <= 0) {
-      // Phase 27: Guardhouse patrol — if assigned to a guardhouse, patrol its radius
-      const assignedGuardhouse = this.assignedBuilding &&
-        this.assignedBuilding.type === 'barracks' || // barracks also act as patrol post
-        (this.assignedBuilding && this.assignedBuilding.type === 'guardhouse')
+      // Barracks patrol — citizens assigned to barracks patrol its radius
+      const assignedGuardhouse = (this.assignedBuilding &&
+        this.assignedBuilding.type === 'barracks')
           ? this.assignedBuilding : null;
 
       if (assignedGuardhouse && assignedGuardhouse.state === 'complete') {
@@ -352,15 +351,18 @@ export class Citizen {
 
       if (this._gatherTimer <= 0) {
         // Harvest completion
-        const yieldAmt = node.type === 'wood' ? 8 : 5;
+        const yieldAmt = node.type === 'wood' ? 8 : node.type === 'food' ? 4 : 5;
         const actual = checkAndHarvest(node, yieldAmt);
         releaseNode(node);
         this._gatherNode = null;
 
         if (actual > 0) {
-          const res = node.type === 'wood' ? { wood: actual } : { stone: actual };
+          const res = node.type === 'wood' ? { wood: actual }
+                    : node.type === 'food' ? { food: actual }
+                    : { stone: actual };
           earn(res);
-          awardXp(this, 'mining', 3 * actual / yieldAmt);
+          const skill = node.type === 'food' ? 'farming' : 'mining';
+          awardXp(this, skill, 3 * actual / yieldAmt);
           events.emit(EV.RESOURCE_HARVESTED, { x: this.x, y: this.y, type: node.type, amount: actual });
         }
 

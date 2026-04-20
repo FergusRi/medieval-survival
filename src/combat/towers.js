@@ -15,15 +15,10 @@ export const TOWER_COMBAT = {
     range:      200,
     fireRate:   1.2,
   },
-  ballista_tower: {
-    projectile: 'bolt',
-    range:      320,
-    fireRate:   0.5,
-  },
-  cannon_tower: {
-    projectile: 'cannonball',
-    range:      280,
-    fireRate:   0.22,
+  watchtower: {
+    projectile: 'arrow',
+    range:      160,
+    fireRate:   0.8,
   },
 };
 

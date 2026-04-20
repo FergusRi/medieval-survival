@@ -86,15 +86,12 @@ function _applyUpkeep() {
   const citizenCount = citizens.length;
   let foodCost = 5 + citizenCount * 2;
 
-  // Granary: -20% food upkeep
-  let hasGranary    = false;
+  // Storehouse: -15% food upkeep
   let hasStorehouse = false;
   for (const b of placedBuildings.values()) {
     if (b.state !== 'complete') continue;
-    if (b.type === 'granary')    hasGranary    = true;
     if (b.type === 'storehouse') hasStorehouse = true;
   }
-  if (hasGranary)    foodCost = Math.floor(foodCost * 0.80);
   if (hasStorehouse) foodCost = Math.floor(foodCost * 0.85);
 
   // Deduct — clamp at 0

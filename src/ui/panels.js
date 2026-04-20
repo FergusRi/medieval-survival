@@ -15,7 +15,6 @@ import { TOWER_COMBAT }         from '../combat/towers.js';
 import { SOIL }                 from '../farming/farm.js';
 import { TILE_SIZE }            from '../world/map.js';
 import { getGhostType }         from '../buildings/placement.js';
-import { WEAPONS, WEAPON_COSTS, craftedWeapons, craftWeapon } from '../items/weapons.js';
 import { resources }            from '../resources/resources.js';
 
 // ── Constants ────────────────────────────────────────────────
@@ -389,35 +388,6 @@ function _renderBuildingPanel(b) {
     `;
   }
 
-  // Blacksmith extra
-  let blacksmithSection = '';
-  if (b.type === 'blacksmith' && b.state === 'complete') {
-    const weaponBtns = Object.entries(WEAPONS).map(([key, def]) => {
-      const cost = WEAPON_COSTS[key];
-      const costStr = Object.entries(cost).map(([r, v]) => `${v} ${r}`).join(' + ');
-      const canAfford = Object.entries(cost).every(([r, v]) => (resources[r] ?? 0) >= v);
-      return `<button class="craft-btn${canAfford ? '' : ' craft-btn-disabled'}" data-weapon="${key}">
-        <b>${def.name}</b> <span class="craft-cost">${costStr}</span>
-      </button>`;
-    }).join('');
-    blacksmithSection = `
-      <div class="panel-section">Craft Weapons <span style="color:#606060;font-size:10px;">(${craftedWeapons.length} in stock)</span></div>
-      <div class="craft-grid">${weaponBtns}</div>
-    `;
-  }
-
-  // Armory extra
-  let armorySection = '';
-  if (b.type === 'armory' && b.state === 'complete') {
-    const stock = craftedWeapons.length;
-    armorySection = `
-      <div class="panel-section">Armory</div>
-      <div style="font-size:12px;color:#e8d8a8;margin:4px 0 8px;">
-        ${stock > 0 ? `${stock} weapon${stock !== 1 ? 's' : ''} available — citizens will equip automatically.` : 'No weapons in stock. Craft some at the Blacksmith.'}
-      </div>
-    `;
-  }
-
   // Farm Plot extra
   let farmSection = '';
   if (b.type === 'farm_plot' && b.soilTiles) {
@@ -453,8 +423,6 @@ function _renderBuildingPanel(b) {
     ` : ''}
 
     ${towerSection}
-    ${blacksmithSection}
-    ${armorySection}
     ${farmSection}
   `;
 
@@ -464,15 +432,6 @@ function _renderBuildingPanel(b) {
   const portraitCanvas = _panel.querySelector('#citizen-portrait');
   if (portraitCanvas && c.drawPortrait) c.drawPortrait(portraitCanvas);
 
-  // Blacksmith craft buttons
-  _panel.querySelectorAll('.craft-btn:not(.craft-btn-disabled)').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const type = btn.dataset.weapon;
-      if (craftWeapon(type)) {
-        _renderBuildingPanel(b); // refresh panel to show updated stock & affordability
-      }
-    });
-  });
 }
 
 // ── Citizen panel render ─────────────────────────────────────

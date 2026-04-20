@@ -38,46 +38,31 @@ export function earn(gains) {
 
 // Building costs used by placement.js
 export const BUILDING_COSTS = {
-  // ── Tier 1 — Settlement ──────────────────────────────────
-  settlement_hall:  { wood: 60,  stone: 20 },
-  log_cabin:        { wood: 30 },
-  farm_plot:        { wood: 20 },
-  lumber_camp:      { wood: 25 },
-  pit_mine:         { wood: 30,  stone: 10 },
-  root_cellar:      { wood: 20,  stone: 5  },
-  herbalist:        { wood: 25,  medicine: 5 },
-  palisade:         { wood: 8   },
-  wooden_gate:      { wood: 15  },
-  watchtower:       { wood: 20  },
-  arrow_tower:      { wood: 35,  stone: 15 },
+  // ── Housing ──────────────────────────────────────────────
+  log_cabin:        { wood: 25 },
 
-  // ── Tier 2 — Town ────────────────────────────────────────
-  town_hall:        { wood: 80,  stone: 60 },
-  townhouse:        { wood: 30,  stone: 20 },
-  forge:            { stone: 40, metal: 10 },
-  sawmill:          { wood: 40,  stone: 15 },
-  quarry:           { wood: 30,  stone: 25 },
-  granary:          { wood: 50,  stone: 10 },
-  market:           { wood: 40,  gold: 10  },
-  blacksmith:       { wood: 30,  metal: 20 },
-  tavern:           { wood: 50,  gold: 5   },
-  church:           { wood: 40,  stone: 40 },
-  barracks:         { wood: 50,  stone: 30, metal: 10 },
-  archery_range:    { wood: 45,  stone: 20, metal: 10 },
-  storehouse:       { wood: 50,  stone: 10 },
-  stone_wall:       { stone: 20 },
-  ballista_tower:   { wood: 40,  stone: 40, metal: 20 },
+  // ── Food / Resources ─────────────────────────────────────
+  farm_plot:        { wood: 15 },
+  lumber_camp:      { wood: 20 },
+  pit_mine:         { wood: 20,  stone: 8  },
+  storehouse:       { wood: 30,  stone: 8  },
 
-  // ── Tier 3 — Castle ──────────────────────────────────────
-  castle_keep:      { stone: 150, metal: 80, gold: 30 },
-  manor:            { stone: 80,  metal: 20, gold: 10 },
-  mint:             { stone: 40,  metal: 30, gold: 10 },
-  cathedral:        { stone: 120, metal: 30, gold: 20 },
-  armory:           { stone: 60,  metal: 50 },
-  treasury:         { stone: 50,  metal: 30, gold: 20 },
-  fortress_wall:    { stone: 40,  metal: 10 },
-  gatehouse:        { stone: 80,  metal: 30 },
-  cannon_tower:     { stone: 100, metal: 80, gold: 20 },
+  // ── Crafting / Economy ───────────────────────────────────
+  forge:            { wood: 20,  stone: 30 },
+  market:           { wood: 30,  gold: 5   },
+
+  // ── Civic ────────────────────────────────────────────────
+  herbalist:        { wood: 20 },
+  church:           { wood: 30,  stone: 30 },
+
+  // ── Military ─────────────────────────────────────────────
+  barracks:         { wood: 40,  stone: 20, metal: 8 },
+  watchtower:       { wood: 15 },
+  arrow_tower:      { wood: 25,  stone: 12 },
+
+  // ── Walls ────────────────────────────────────────────────
+  palisade:         { wood: 6   },
+  stone_wall:       { stone: 15 },
 };
 
 // Per-wave upkeep deducted during AFTERMATH
@@ -89,15 +74,11 @@ export const UPKEEP_PER_WAVE = {
 
 // What each building produces per wave when staffed (where required)
 const BUILDING_PRODUCTION = {
-  lumber_camp: { requiresStaff: true,  yields: { wood: 15 } },
-  sawmill:     { requiresStaff: true,  yields: { wood: 20 } },
+  lumber_camp: { requiresStaff: true,  yields: { wood: 15  } },
   pit_mine:    { requiresStaff: true,  yields: { stone: 10 } },
-  quarry:      { requiresStaff: true,  yields: { stone: 12 } },
   forge:       { requiresStaff: true,  yields: { metal: 8  } },
-  mint:        { requiresStaff: true,  yields: { gold: 5   } },
-  granary:     { requiresStaff: false, yields: {} }, // effect: upkeep reduction (handled in upkeep block)
+  market:      { requiresStaff: true,  yields: { gold: 5   } },
   storehouse:  { requiresStaff: false, yields: {} }, // effect: upkeep reduction (15%)
-  root_cellar: { requiresStaff: false, yields: { food: 5 } },
   farm_plot:   { requiresStaff: true,  yields: { food: 10 } },
 };
 
@@ -202,8 +183,7 @@ export function initProduction(placedBuildings, citizens) {
     // --- Upkeep: food ---
     let foodUpkeep = 5 + _livingCount() * 2;
     // Granary discount: -20%
-    if (hasCompleteBuilding('granary')) foodUpkeep = Math.floor(foodUpkeep * 0.8);
-    // Storehouse discount: -15% (applies after granary)
+    // Storehouse discount: -15%
     if (hasCompleteBuilding('storehouse')) foodUpkeep = Math.floor(foodUpkeep * 0.85);
     // Deduct (allow going to 0, not below)
     const oldFood = resources.food;

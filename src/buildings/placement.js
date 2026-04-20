@@ -44,15 +44,6 @@ function isValidPlacement(type, tx, ty) {
       if (occupiedTiles.has(tileKey(fx, fy))) return false;
     }
   }
-  // Tier gates
-  const def2 = BUILDINGS[type];
-  const completed = (t) => [...placedBuildings.values()].some(b => b.type === t && b.state === 'complete');
-  if (def2.tier === 2) {
-    if (!completed('settlement_hall') || !completed('forge')) return false;
-  }
-  if (def2.tier === 3) {
-    if (!completed('town_hall') || !completed('mint')) return false;
-  }
   const cost = BUILDING_COSTS[type];
   if (cost && !canAfford(cost)) return false;
   return true;

@@ -8,7 +8,7 @@ import { initRenderer, beginFrame, endFrame, getCtx } from './engine/renderer.js
 import { initInput, handleKeyPan } from './engine/input.js';
 import { camera } from './engine/camera.js';
 import { generateMap, getTile, MAP_SIZE, TILE_SIZE, MAP_PX, MAP_SEED, decorations } from './world/map.js';
-import { initResourceNodes } from './world/resource_nodes.js';
+import { initResourceNodes, getNodes } from './world/resource_nodes.js';
 import { initMinimap, drawMinimap } from './ui/minimap.js';
 import { T, TILE_DEF } from './world/tiles.js';
 import { preloadSprites, getTileSprite, getDecorSprite, PINE_TILES } from './sprites/tile_sprites.js';
@@ -73,6 +73,118 @@ function getCitizenAtScreen(sx, sy) {
   return null;
 }
 
+// ---- Citizen selection + gather context menu ----------------
+let _selectedCitizen = null;
+
+// Context menu state: { sx, sy, items: [{label, action}] } or null
+let _contextMenu = null;
+
+const GATHER_MENU_ITEMS = [
+  { label: '🪓 Chop Wood',      gatherType: 'wood'  },
+  { label: '⛏ Mine Stone',      gatherType: 'stone' },
+  { label: '🫐 Pick Berries',   gatherType: 'food'  },
+  { label: '❌ Cancel Order',   gatherType: null    },
+];
+
+/** Open the gather context menu at screen position sx,sy for the given citizen. */
+function openGatherMenu(citizen, sx, sy) {
+  _contextMenu = {
+    sx, sy,
+    citizen,
+    items: GATHER_MENU_ITEMS.map(item => ({
+      label: item.label,
+      action: () => {
+        if (item.gatherType === null) {
+          // Cancel — return citizen to IDLE
+          citizen.state = 'IDLE';
+          citizen._gatherNode = null;
+          citizen._gatherType = null;
+        } else {
+          events.emit(EV.CITIZEN_ASSIGNED, {
+            citizen,
+            task: 'gather',
+            gatherType: item.gatherType,
+          });
+        }
+        _contextMenu = null;
+      },
+    })),
+  };
+}
+
+/** Draw the context menu in screen space (call after endFrame / in UI pass). */
+function drawContextMenu(ctx) {
+  if (!_contextMenu) return;
+  const { sx, sy, items } = _contextMenu;
+
+  const ITEM_H  = 28;
+  const MENU_W  = 160;
+  const PAD     = 6;
+  const menuH   = items.length * ITEM_H + PAD * 2;
+
+  // Clamp to viewport
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const mx = Math.min(sx, vw - MENU_W - 4);
+  const my = Math.min(sy, vh - menuH - 4);
+
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  // Shadow
+  ctx.shadowColor = 'rgba(0,0,0,0.5)';
+  ctx.shadowBlur  = 8;
+
+  // Background
+  ctx.fillStyle = '#1e1a14';
+  ctx.strokeStyle = '#8b7340';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(mx, my, MENU_W, menuH, 6);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.shadowBlur = 0;
+
+  // Items
+  ctx.font = '13px sans-serif';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < items.length; i++) {
+    const iy = my + PAD + i * ITEM_H;
+
+    // Hover highlight (use _contextMenuHover)
+    if (_contextMenuHover === i) {
+      ctx.fillStyle = 'rgba(255,200,80,0.15)';
+      ctx.beginPath();
+      ctx.roundRect(mx + 3, iy + 2, MENU_W - 6, ITEM_H - 4, 4);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = i === items.length - 1 ? '#e06060' : '#e8d89a';
+    ctx.fillText(items[i].label, mx + 12, iy + ITEM_H / 2);
+  }
+
+  ctx.restore();
+}
+
+let _contextMenuHover = -1;
+
+/** Hit-test context menu against screen position. Returns item index or -1. */
+function contextMenuHitTest(sx, sy) {
+  if (!_contextMenu) return -1;
+  const { sx: mx, sy: my, items } = _contextMenu;
+  const ITEM_H = 28;
+  const MENU_W = 160;
+  const PAD    = 6;
+  const menuH  = items.length * ITEM_H + PAD * 2;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const cmx = Math.min(mx, vw - MENU_W - 4);
+  const cmy = Math.min(my, vh - menuH - 4);
+  if (sx < cmx || sx > cmx + MENU_W || sy < cmy || sy > cmy + menuH) return -1;
+  return Math.floor((sy - cmy - PAD) / ITEM_H);
+}
+
 // ---- Input wiring --------------------------------------------
 function setupBuildInput() {
   const canvas = document.getElementById('game') ?? document.querySelector('canvas');
@@ -83,19 +195,60 @@ function setupBuildInput() {
       updateGhostPos(e.clientX, e.clientY);
     } else {
       _hoveredCitizen = getCitizenAtScreen(e.clientX, e.clientY);
+      // Update context menu hover
+      if (_contextMenu) {
+        _contextMenuHover = contextMenuHitTest(e.clientX, e.clientY);
+      }
     }
   });
 
   canvas.addEventListener('click', e => {
+    // If context menu is open, handle click inside it
+    if (_contextMenu) {
+      const idx = contextMenuHitTest(e.clientX, e.clientY);
+      if (idx >= 0) {
+        _contextMenu.items[idx].action();
+      } else {
+        _contextMenu = null; // clicked outside — dismiss
+      }
+      return;
+    }
+
     if (getGhostType()) {
       updateGhostPos(e.clientX, e.clientY);
       handleBuildClick(e.clientX, e.clientY);
+      return;
+    }
+
+    // Left-click: select citizen
+    const hit = getCitizenAtScreen(e.clientX, e.clientY);
+    if (hit) {
+      _selectedCitizen = (_selectedCitizen === hit) ? null : hit;
+    } else {
+      _selectedCitizen = null;
     }
   });
 
   canvas.addEventListener('contextmenu', e => {
     e.preventDefault();
-    cancelGhost();
+
+    if (getGhostType()) {
+      cancelGhost();
+      return;
+    }
+
+    // Right-click with a selected citizen → gather menu
+    if (_selectedCitizen) {
+      openGatherMenu(_selectedCitizen, e.clientX, e.clientY);
+      return;
+    }
+
+    // Right-click directly on a citizen → select + open menu immediately
+    const hit = getCitizenAtScreen(e.clientX, e.clientY);
+    if (hit) {
+      _selectedCitizen = hit;
+      openGatherMenu(hit, e.clientX, e.clientY);
+    }
   });
 
   window.addEventListener('keydown', e => {
@@ -109,10 +262,7 @@ function setupBuildInput() {
 function setupCitizenSpawning() {
   events.on(EV.BUILDING_COMPLETED, ({ building }) => {
     const spawns = {
-      capital:        3,
-      settlement_hall: 3,
-      town_hall:       5,
-      castle_keep:     8,
+      capital: 3,
     };
     const count = spawns[building.type];
     if (count) {
@@ -230,17 +380,27 @@ function render() {
   // Build sorted draw list
   const drawList = [];
 
-  // Decorations (trees + rocks) from map decoration list — Y-sorted sprites
-  // Trees render as 2-tile-tall sprites (occupy tile above); rocks as 1-tile
+  // Decorations (trees, rocks, berry bushes) — Y-sorted sprites
+  // Trees: 2-tile-tall sprites. Rocks + berries: 1-tile.
+  // Nodes from resource_nodes.js track depletion — look up by tile pos.
+  const _nodeMap = new Map();
+  for (const n of getNodes()) _nodeMap.set(`${n.tx},${n.ty}`, n);
+
   for (const d of decorations) {
     if (d.tx < tx0 || d.tx >= tx1) continue;
-    if (d.type === 'tree' && (d.ty + 1 < ty0 || d.ty >= ty1)) continue;
-    if (d.type === 'rock' && (d.ty < ty0 || d.ty >= ty1)) continue;
-    if (d.depleted) continue; // harvested — don't render
+    if (d.type === 'tree'  && (d.ty + 1 < ty0 || d.ty >= ty1)) continue;
+    if (d.type !== 'tree'  && (d.ty < ty0 || d.ty >= ty1)) continue;
 
-    const isTree = d.type === 'tree';
-    const spr    = getDecorSprite(d.type, d.variant);
-    const dtx    = d.tx, dty = d.ty;
+    const node = _nodeMap.get(`${d.tx},${d.ty}`);
+    if (node && node.depleted) continue; // fully harvested — skip
+
+    const isTree  = d.type === 'tree';
+    const isBerry = d.type === 'berry';
+    const spr     = getDecorSprite(d.type, d.variant);
+    const dtx     = d.tx, dty = d.ty;
+
+    // Depletion alpha: fade as resource drains (visual feedback)
+    const alpha = node ? (0.35 + 0.65 * (node.amount / node.maxAmount)) : 1;
 
     drawList.push({
       sortY: isTree ? (dty + 1) * TILE_SIZE : (dty + 0.8) * TILE_SIZE,
@@ -248,10 +408,41 @@ function render() {
         const px = dtx * TILE_SIZE;
         const py = isTree ? (dty - 1) * TILE_SIZE : dty * TILE_SIZE;
         const h  = isTree ? TILE_SIZE * 2 : TILE_SIZE;
-        if (spr) ctx.drawImage(spr, px, py, TILE_SIZE, h);
-        else {
+
+        if (alpha < 1) { ctx.save(); ctx.globalAlpha = alpha; }
+
+        if (spr) {
+          ctx.drawImage(spr, px, py, TILE_SIZE, h);
+        } else if (isBerry) {
+          // Procedural berry bush fallback
+          ctx.fillStyle = '#2d6e1a';
+          ctx.beginPath();
+          ctx.ellipse(px + TILE_SIZE/2, py + TILE_SIZE*0.6, TILE_SIZE*0.4, TILE_SIZE*0.3, 0, 0, Math.PI*2);
+          ctx.fill();
+          // Berries
+          const bpos = [[0.35,0.55],[0.55,0.5],[0.45,0.7],[0.65,0.65],[0.3,0.7]];
+          ctx.fillStyle = '#c0392b';
+          for (const [bx2, by2] of bpos) {
+            ctx.beginPath();
+            ctx.arc(px + bx2*TILE_SIZE, py + by2*TILE_SIZE, 3, 0, Math.PI*2);
+            ctx.fill();
+          }
+        } else {
           ctx.fillStyle = isTree ? '#2d5a1b' : '#888';
           ctx.fillRect(px + 4, py + 4, TILE_SIZE - 8, h - 8);
+        }
+
+        if (alpha < 1) { ctx.restore(); }
+
+        // Working indicator: pulsing ring when citizen is harvesting
+        if (node && node.workersActive > 0) {
+          const t2 = Date.now() / 400;
+          const r  = 0.5 + 0.5 * Math.sin(t2);
+          ctx.strokeStyle = `rgba(255,200,60,${r * 0.8})`;
+          ctx.lineWidth   = 1.5;
+          ctx.beginPath();
+          ctx.arc(px + TILE_SIZE/2, py + h - TILE_SIZE/2, TILE_SIZE * 0.45, 0, Math.PI*2);
+          ctx.stroke();
         }
       }
     });
@@ -308,6 +499,36 @@ function render() {
   // Phase 30: particles drawn above projectiles
   drawParticles(ctx);
 
+  // ── Selected citizen ring (world space, under tooltip) ────
+  if (_selectedCitizen && !_selectedCitizen.dead) {
+    const sc = _selectedCitizen;
+    ctx.save();
+    // Still in world-space (camera transform applied via beginFrame)
+    const t = Date.now() / 600;
+    const pulse = 0.65 + 0.35 * Math.sin(t);
+    ctx.strokeStyle = `rgba(255,220,60,${pulse})`;
+    ctx.lineWidth   = 2 / camera.zoom;
+    ctx.beginPath();
+    ctx.arc(sc.x, sc.y + 4, 10 / camera.zoom, 0, Math.PI * 2);
+    ctx.stroke();
+    // Small task badge above head
+    if (sc.state === 'GATHERING') {
+      const badge = sc._gatherType === 'wood'  ? '🪓'
+                  : sc._gatherType === 'food'  ? '🫐'
+                  : sc._gatherType === 'stone' ? '⛏' : '';
+      if (badge) {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        const bscr = camera.worldToScreen(sc.x, sc.y);
+        ctx.font = '13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(badge, bscr.x, bscr.y - 26 * camera.zoom);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+
   // ── Citizen name tooltip ──────────────────────────────────
   if (_hoveredCitizen) {
     const { x: scx, y: scy } = camera.worldToScreen(_hoveredCitizen.x, _hoveredCitizen.y);
@@ -340,6 +561,9 @@ function render() {
 
   // Restore shake translate before UI/HUD draws in screen space
   ctx.restore();
+
+  // ── Gather context menu (screen space) ────────────────────
+  drawContextMenu(ctx);
 
   updateHUDTimer();
   updateColonistBar();

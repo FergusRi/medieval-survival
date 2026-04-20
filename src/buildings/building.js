@@ -5,7 +5,7 @@ import { BUILDINGS } from './registry.js';
 import { createSoilTiles } from '../farming/farm.js';
 
 // Wall types that support rotation
-export const ROTATABLE_BUILDINGS = new Set(['palisade', 'stone_wall', 'fortress_wall', 'wooden_gate', 'gatehouse']);
+export const ROTATABLE_BUILDINGS = new Set(['palisade', 'stone_wall']);
 
 export class Building {
   constructor(type, tx, ty, rotation = 0) {

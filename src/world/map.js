@@ -60,11 +60,13 @@ function whittaker(e, m, t) {
   return T.SAND;
 }
 
-// Tiles eligible for tree/rock decoration placement
-const TREE_ELIGIBLE = new Set([T.GRASS, T.FOREST, T.SCRUBLAND]);
-const ROCK_ELIGIBLE = new Set([T.GRASS, T.SCRUBLAND, T.DIRT]);
-const TREE_RATE     = 0.03;  // ~3% of eligible tiles get a tree
-const ROCK_RATE     = 0.0125; // ~1.25% of eligible tiles get a rock
+// Tiles eligible for tree/rock/berry decoration placement
+const TREE_ELIGIBLE  = new Set([T.GRASS, T.FOREST, T.SCRUBLAND]);
+const ROCK_ELIGIBLE  = new Set([T.GRASS, T.SCRUBLAND, T.DIRT]);
+const BERRY_ELIGIBLE = new Set([T.GRASS, T.SCRUBLAND]);
+const TREE_RATE      = 0.03;   // ~3% of eligible tiles get a tree
+const ROCK_RATE      = 0.0125; // ~1.25% of eligible tiles get a rock
+const BERRY_RATE     = 0.008;  // ~0.8% of eligible tiles get a berry bush
 
 // ---- Map generation ------------------------------------------
 export let MAP_SEED = 0;
@@ -119,11 +121,13 @@ export function generateMap(seed = Date.now()) {
         decorations.push({ tx, ty, type: 'tree', variant: (h >> 8) & 1 });
       } else if (ROCK_ELIGIBLE.has(tile) && frac < ROCK_RATE) {
         decorations.push({ tx, ty, type: 'rock', variant: (h >> 8) & 1 });
+      } else if (BERRY_ELIGIBLE.has(tile) && frac >= ROCK_RATE && frac < ROCK_RATE + BERRY_RATE) {
+        decorations.push({ tx, ty, type: 'berry', variant: (h >> 4) & 1 });
       }
     }
   }
 
-  console.log(`[map] generated — ${MAP_SIZE}×${MAP_SIZE}, seed=${seed}, ${decorations.filter(d=>d.type==='tree').length} trees, ${decorations.filter(d=>d.type==='rock').length} rocks`);
+  console.log(`[map] generated — ${MAP_SIZE}×${MAP_SIZE}, seed=${seed}, ${decorations.filter(d=>d.type==='tree').length} trees, ${decorations.filter(d=>d.type==='rock').length} rocks, ${decorations.filter(d=>d.type==='berry').length} berry bushes`);
   events.emit(EV.MAP_LOADED, { width: MAP_SIZE, height: MAP_SIZE });
 }
 

@@ -8,8 +8,10 @@ import { decorations, TILE_SIZE } from './map.js';
 
 const MAX_WORKERS_WOOD  = 2;
 const MAX_WORKERS_ROCK  = 1;
+const MAX_WORKERS_BERRY = 1;
 const WOOD_PER_NODE     = 80;   // wood per individual tree
 const STONE_PER_NODE    = 50;   // stone per individual rock
+const FOOD_PER_NODE     = 30;   // food per berry bush
 
 // ── Node registry ─────────────────────────────────────────────
 // { id, type, tx, ty, cx, cy, amount, maxAmount, workersActive, depleted }
@@ -24,8 +26,11 @@ export function initResourceNodes() {
   _nextId = 1;
 
   for (const d of decorations) {
-    const type = d.type === 'tree' ? 'wood' : 'stone';
-    const maxAmount = type === 'wood' ? WOOD_PER_NODE : STONE_PER_NODE;
+    let type, maxAmount;
+    if (d.type === 'tree')  { type = 'wood';  maxAmount = WOOD_PER_NODE; }
+    else if (d.type === 'rock')  { type = 'stone'; maxAmount = STONE_PER_NODE; }
+    else if (d.type === 'berry') { type = 'food';  maxAmount = FOOD_PER_NODE; }
+    else continue;
     _nodes.push({
       id: _nextId++,
       type,
@@ -42,12 +47,15 @@ export function initResourceNodes() {
 
   const wood  = _nodes.filter(n => n.type === 'wood').length;
   const stone = _nodes.filter(n => n.type === 'stone').length;
-  console.log(`[ResourceNodes] ${wood} tree nodes, ${stone} rock nodes`);
+  const food  = _nodes.filter(n => n.type === 'food').length;
+  console.log(`[ResourceNodes] ${wood} tree nodes, ${stone} rock nodes, ${food} berry bushes`);
 }
 
 // ── Helpers ───────────────────────────────────────────────────
 function _maxWorkers(node) {
-  return node.type === 'wood' ? MAX_WORKERS_WOOD : MAX_WORKERS_ROCK;
+  if (node.type === 'wood')  return MAX_WORKERS_WOOD;
+  if (node.type === 'food')  return MAX_WORKERS_BERRY;
+  return MAX_WORKERS_ROCK;
 }
 
 /** Returns nearest available (non-full, non-empty) node of given type within maxDist px. */

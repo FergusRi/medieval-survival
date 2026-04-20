@@ -21,24 +21,20 @@ const TILE = 32;
 
 // Buildings that produce resources when staffed
 const PRODUCTION_BUILDINGS = new Set([
-  'lumber_mill', 'quarry', 'forge', 'mint', 'market',
-  'blacksmith', 'healers_hut', 'guardhouse', 'watchtower',
+  'lumber_camp', 'pit_mine', 'forge', 'market', 'herbalist', 'watchtower',
 ]);
 
 // Max staff slots per building type (mirrors registry)
 const STAFF_SLOTS = {
-  lumber_mill:   1,
-  lumber_camp:   2,   // gather wood
-  quarry:        1,
-  pit_mine:      2,   // gather stone
-  forge:         1,
-  mint:          1,
-  market:        1,
-  blacksmith:    1,
-  healers_hut:   1,
-  guardhouse:    2,
-  watchtower:    1,
-  farm_plot:     1,
+  lumber_camp:  1,
+  pit_mine:     1,
+  forge:        1,
+  market:       1,
+  herbalist:    1,
+  church:       1,
+  barracks:     4,
+  watchtower:   1,
+  farm_plot:    1,
 };
 
 // Buildings that trigger gather tasks instead of staffing

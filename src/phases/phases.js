@@ -51,15 +51,8 @@ export function enemyDied() {
 export function checkLoss() {
   // Capital destroyed AND no settlements remaining with alive citizens
   const hasCapital    = [...placedBuildings.values()].some(b => b.type === 'capital');
-  const hasSettlement = [...placedBuildings.values()].some(
-    b => b.type === 'settlement_hall' || b.type === 'town_hall' || b.type === 'castle_keep'
-  );
   const hasCitizens = citizens.length > 0;
 
-  if (!hasCapital && !hasSettlement && !hasCitizens) {
-    events.emit(EV.GAME_OVER, { waveNumber: _waveNumber, reason: 'no_structures_no_citizens' });
-    return true;
-  }
   if (!hasCapital && !hasCitizens) {
     events.emit(EV.GAME_OVER, { waveNumber: _waveNumber, reason: 'capital_destroyed_no_citizens' });
     return true;
