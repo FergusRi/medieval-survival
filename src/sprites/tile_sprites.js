@@ -12,7 +12,7 @@ const treeLoaded  = new Map(); // name   → ImageBitmap
 // Each biome tile has 1–4 variants (different seeds generated at build time)
 // Currently 1 per type; add more paths to get more variety per biome
 const TILE_VARIANTS = {
-  [T.GRASS]:          ['assets/tiles/grass.png'],
+  [T.GRASS]:          ['assets/tiles/grass.png', 'assets/tiles/grass2.png', 'assets/tiles/grass3.png', 'assets/tiles/grass4.png'],
   [T.DIRT]:           ['assets/tiles/dirt.png'],
   [T.SAND]:           ['assets/tiles/sand.png'],
   [T.SCRUBLAND]:      ['assets/tiles/scrubland.png'],
