@@ -50,12 +50,12 @@ function* buildFlowField(goals) {
 // Active generator reference
 let _rebuilder = null;
 
-/** Collect all settlement/capital goal tiles and schedule a rebuild. */
+/** Collect all settlement goal tiles and schedule a rebuild. */
 function _collectGoals() {
   const goals = [];
   for (const b of placedBuildings.values()) {
     if (b.state !== 'complete') continue;
-    if (b.type === 'settlement' || b.type === 'capital') {
+    if (b.type === 'settlement') { // capital removed — enemies target settlements only
       // Use centre tile of the building footprint
       const cx = Math.floor(b.tx + b.w / 2);
       const cy = Math.floor(b.ty + b.h / 2);
@@ -100,9 +100,9 @@ events.on(EV.BUILDING_DESTROYED, () => {
   scheduleRebuild();
 });
 
-// When a settlement or capital finishes building, rebuild so enemies can path
+// When a settlement finishes building, rebuild so enemies can path
 events.on(EV.BUILDING_COMPLETED, ({ building }) => {
-  if (building.type === 'settlement' || building.type === 'capital') {
+  if (building.type === 'settlement') {
     scheduleRebuild();
   }
 });

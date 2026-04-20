@@ -2,7 +2,7 @@
 // placement.js — Ghost preview + click-to-place + 2.5D render
 // ============================================================
 import { BUILDINGS } from './registry.js';
-import { Building } from './building.js';
+import { Building, WALL_TYPES } from './building.js';
 import { getTile, MAP_SIZE } from '../world/map.js';
 import { T } from '../world/tiles.js';
 import { canAfford, spend, BUILDING_COSTS } from '../resources/resources.js';
@@ -10,10 +10,11 @@ import { events, EV } from '../engine/events.js';
 import { camera } from '../engine/camera.js';
 import { drawBuildingSprite, SPRITE_EXTRA_ROWS_ABOVE } from '../sprites/building_sprites.js';
 import { drawScaffold, drawRubble } from '../sprites/effect_sprites.js';
-import { ROTATABLE_BUILDINGS } from './building.js';
 
 // All placed buildings: Map<id, Building>
 export const placedBuildings = new Map();
+// Floor tiles: Map<"tx,ty", { type, state }>  — floors don't block movement
+export const floorMap = new Map();
 // Occupied tile set: Set<"tx,ty">
 const occupiedTiles = new Set();
 
@@ -22,9 +23,8 @@ let ghostTX = 0, ghostTY = 0;
 let ghostRotation = 0; // 0 = horizontal, 1 = vertical
 
 export function cycleGhostRotation() {
-  if (ghostType && ROTATABLE_BUILDINGS.has(ghostType)) {
-    ghostRotation = ghostRotation === 0 ? 1 : 0;
-  }
+  // rotation reserved for future use — no building types currently use it
+  ghostRotation = ghostRotation === 0 ? 1 : 0;
 }
 export function getGhostRotation() { return ghostRotation; }
 
@@ -70,8 +70,18 @@ export function updateGhostPos(screenX, screenY) {
 export function placeBuilding() {
   if (!ghostType) return false;
   if (!isValidPlacement(ghostType, ghostTX, ghostTY)) return false;
+  const def = BUILDINGS[ghostType];
   const cost = BUILDING_COSTS[ghostType];
   if (cost) spend(cost);
+
+  // ── Floor tiles go into floorMap, not placedBuildings ──────
+  if (def.isFloor) {
+    const key = tileKey(ghostTX, ghostTY);
+    floorMap.set(key, { type: ghostType, state: 'complete' });
+    ghostType = null;
+    return true;
+  }
+
   const b = new Building(ghostType, ghostTX, ghostTY, ghostRotation);
   placedBuildings.set(b.id, b);
   for (const { tx, ty } of b.footprintTiles) occupiedTiles.add(tileKey(tx, ty));
@@ -80,6 +90,31 @@ export function placeBuilding() {
   if (b.state === 'complete') events.emit(EV.BUILDING_COMPLETED, { building: b });
   ghostType = null;
   return true;
+}
+
+/**
+ * Returns a 4-bit NESW adjacency bitmask for wall-connecting buildings.
+ * bit 3=N, bit 2=E, bit 1=S, bit 0=W
+ */
+export function getWallAdjacencyMask(b) {
+  const { tx, ty } = b;
+  let mask = 0;
+  // North
+  if (_wallAt(tx, ty - 1)) mask |= 0b1000;
+  // East
+  if (_wallAt(tx + 1, ty)) mask |= 0b0100;
+  // South
+  if (_wallAt(tx, ty + 1)) mask |= 0b0010;
+  // West
+  if (_wallAt(tx - 1, ty)) mask |= 0b0001;
+  return mask;
+}
+
+function _wallAt(tx, ty) {
+  for (const b of placedBuildings.values()) {
+    if (b.tx === tx && b.ty === ty && WALL_TYPES.has(b.type)) return true;
+  }
+  return false;
 }
 
 export function handleBuildClick(screenX, screenY) {
@@ -127,16 +162,17 @@ export function drawBuilding(ctx, b) {
 
   // Rotate 90° for vertical-orientation buildings
   const isRotated = b.rotation === 1;
+  const adjMask = WALL_TYPES.has(b.type) ? getWallAdjacencyMask(b) : null;
   if (isRotated) {
     const cx = drawX + drawW / 2;
     const cy = drawY + drawH / 2;
     ctx.save();
     ctx.translate(cx, cy);
     ctx.rotate(Math.PI / 2);
-    drawBuildingSprite(ctx, b.type, spriteState, -drawW / 2, -drawH / 2, drawW, drawH);
+    drawBuildingSprite(ctx, b.type, spriteState, -drawW / 2, -drawH / 2, drawW, drawH, b._aimAngle, adjMask);
     ctx.restore();
   } else {
-    drawBuildingSprite(ctx, b.type, spriteState, drawX, drawY, drawW, drawH);
+    drawBuildingSprite(ctx, b.type, spriteState, drawX, drawY, drawW, drawH, b._aimAngle, adjMask);
   }
 
   // Scaffold overlay for blueprint / under-construction buildings

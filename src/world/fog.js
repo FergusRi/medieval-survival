@@ -38,10 +38,10 @@ export function updateFog(visionSources) {
 }
 
 // Vision source radii (tiles):
-// Capital=6, Settlement=5, Watchtower=8, Citizen=3
+// Settlement=5, Turrets=6, Citizen=3
 export const VISION_RADII = {
-  capital:    6,
-  settlement: 5,
-  watchtower: 8,
-  citizen:    3,
+  settlement:       5,
+  turret_ballista:  6,
+  turret_cannon:    6,
+  citizen:          3,
 };

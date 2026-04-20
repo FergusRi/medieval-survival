@@ -15,11 +15,12 @@ import { preloadSprites, getTileSprite, getDecorSprite, PINE_TILES } from './spr
 import { preloadBuildingSprites } from './sprites/building_sprites.js';
 import { resources, initProduction } from './resources/resources.js';
 import { renderBuildings, drawBuilding, buildingSortY, placedBuildings, updateGhostPos, handleBuildClick, cancelGhost, getGhostType, cycleGhostRotation, destroyBuilding, drawBuildingDamageOverlay } from './buildings/placement.js';
+import { renderFloors } from './buildings/floors.js';
 import { renderConstruction } from './buildings/construction.js';
 import { initFrame, TOP_BAR_H, BOTTOM_BAR_H } from './ui/frame.js';
 import { updateCitizens, spawnCitizens, citizens, setCitizenEnemyRef, renderGraves, clearGraves } from './citizens/citizen.js';
 import { spatialGrid } from './world/spatial.js';
-import { updateAssignments } from './citizens/assignment.js';
+import { staffCount } from './citizens/assignment.js';
 import { tickFlowField, scheduleRebuild } from './world/flowfield.js';
 import { drawFarmPlot } from './farming/farm.js';
 import './farming/farm.js'; // activate WAVE_STARTED / WAVE_ENDED listeners
@@ -262,7 +263,7 @@ function setupBuildInput() {
 function setupCitizenSpawning() {
   events.on(EV.BUILDING_COMPLETED, ({ building }) => {
     const spawns = {
-      capital: 3,
+      settlement: 3,
     };
     const count = spawns[building.type];
     if (count) {
@@ -281,7 +282,7 @@ function update(dt) {
   handleKeyPan(dt);
   camera.clamp(MAP_PX, MAP_PX);
   updateCitizens(dt);
-  updateAssignments(dt);
+  // updateAssignments removed — citizen AI drives work decisions via _pickNextTask()
   tickFlowField();
   updateTimer(dt);
   updateTowers(dt, placedBuildings, enemies);
@@ -372,6 +373,9 @@ function render() {
     for (let ty = ty0; ty <= ty1; ty++) { ctx.moveTo(tx0*TILE_SIZE, ty*TILE_SIZE); ctx.lineTo(tx1*TILE_SIZE, ty*TILE_SIZE); }
     ctx.stroke();
   }
+
+  // ── Pass 1.5: Floor tiles (between ground and Y-sorted objects) ──
+  renderFloors(ctx, camera, tx0, ty0, tx1, ty1);
 
   // ── Pass 2+3: Y-sorted trees, buildings, citizens ─────────
   // Collect all drawable entities with a sortY value, then draw

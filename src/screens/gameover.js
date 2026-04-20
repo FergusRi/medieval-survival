@@ -173,8 +173,8 @@ function _createOverlay() {
 
 // ── Show ─────────────────────────────────────────────────────
 const REASON_LABELS = {
-  no_structures_no_citizens:         'Every building was destroyed and all citizens fell.',
-  capital_destroyed_no_citizens:     'The capital was destroyed and no citizens remained to rebuild.',
+  no_structures_no_citizens: 'Every building was destroyed and all citizens fell.',
+  no_citizens_remaining:     'All citizens have perished.',
 };
 
 function _showScreen(waveNumber, reason) {

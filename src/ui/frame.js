@@ -5,14 +5,14 @@
 import { resources } from '../resources/resources.js';
 import { events, EV } from '../engine/events.js';
 import { startGhost, cancelGhost, getGhostType, getGhostRotation } from '../buildings/placement.js';
-import { ROTATABLE_BUILDINGS } from '../buildings/building.js';
+// ROTATABLE_BUILDINGS removed — no building types use rotation currently
 import { BUILDINGS } from '../buildings/registry.js';
 import { BUILDING_COSTS } from '../resources/resources.js';
 
 export const TOP_BAR_H    = 36;
 export const BOTTOM_BAR_H = 116;
 
-const ICONS = { food:'🌾', wood:'🪵', stone:'🪨', metal:'⚙️', gold:'💰', medicine:'🧪' };
+const ICONS = { food:'🌾', wood:'🪵', stone:'🪨', metal:'⚙️', gold:'💰' };
 
 let resourceEls = {};
 let panel = null;
@@ -194,7 +194,7 @@ function buildBottomBar() {
   // Update rotate hint each frame
   setInterval(() => {
     const ghost = getGhostType();
-    if (ghost && ROTATABLE_BUILDINGS.has(ghost)) {
+    if (false && ghost) { // rotation disabled — no rotatable buildings currently
       const rot = getGhostRotation();
       rotateHintEl.textContent = `[R] Rotate  ·  ${rot === 0 ? '↔ Horizontal' : '↕ Vertical'}`;
       rotateHintEl.style.display = 'inline';

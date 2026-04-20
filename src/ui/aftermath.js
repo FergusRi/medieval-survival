@@ -86,13 +86,9 @@ function _applyUpkeep() {
   const citizenCount = citizens.length;
   let foodCost = 5 + citizenCount * 2;
 
-  // Storehouse: -15% food upkeep
-  let hasStorehouse = false;
-  for (const b of placedBuildings.values()) {
-    if (b.state !== 'complete') continue;
-    if (b.type === 'storehouse') hasStorehouse = true;
-  }
-  if (hasStorehouse) foodCost = Math.floor(foodCost * 0.85);
+  // Storage crates: -15% food upkeep if any are built
+  const hasStorage = [...placedBuildings.values()].some(b => b.type === 'storage_crate' && b.state === 'complete');
+  if (hasStorage) foodCost = Math.floor(foodCost * 0.85);
 
   // Deduct — clamp at 0
   const actual = Math.min(foodCost, resources.food ?? 0);

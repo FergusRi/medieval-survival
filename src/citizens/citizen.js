@@ -12,7 +12,6 @@ import { applyBuildWork } from '../buildings/construction.js';
 import { findPath } from '../world/pathfinder.js';
 import { isInCombat } from '../phases/phases.js';
 import { craftedWeapons, takeWeapon } from '../items/weapons.js';
-import { GUARDHOUSE_PATROL_RADIUS } from '../resources/resources.js';
 import { drawGrave } from '../sprites/effect_sprites.js';
 import { getTunicColour, drawWeaponOverlay } from '../sprites/citizen_sprites.js';
 import { getNearestNode, claimNode, releaseNode, checkAndHarvest } from '../world/resource_nodes.js';
@@ -249,65 +248,30 @@ export class Citizen {
       }
     }
 
-    // ── Weapon pickup from barracks (unarmed + weapons available) ───
+    // ── Weapon pickup from workbench (unarmed + weapons available) ───
     if (this.state === 'IDLE' && !this.weapon && !this.target &&
         this._waypoints.length === 0 && craftedWeapons.length > 0) {
-      // Find nearest complete barracks within 5 tiles (160px)
-      const BARRACKS_SCAN = 160;
-      let nearestBarracks = null, nearestDist = Infinity;
-      for (const b of placedBuildings.values()) {
-        if (b.type !== 'barracks' || b.state !== 'complete') continue;
-        const ax = b.tx * TILE + (b.w * TILE) / 2;
-        const ay = b.ty * TILE + (b.h * TILE) / 2;
-        const dist = Math.hypot(ax - this.x, ay - this.y);
-        if (dist < nearestDist) { nearestDist = dist; nearestBarracks = b; }
-      }
-      if (nearestBarracks && nearestDist <= BARRACKS_SCAN) {
-        const weapon = takeWeapon();
-        if (weapon) {
-          this.weapon = weapon.def;
-          events.emit(EV.WEAPON_EQUIPPED, { citizen: this, weapon });
-        }
-      } else if (nearestBarracks) {
-        // Walk toward nearest barracks
-        const goalTX = Math.floor((nearestBarracks.tx * TILE + (nearestBarracks.w * TILE) / 2) / TILE);
-        const goalTY = Math.floor((nearestBarracks.ty * TILE + (nearestBarracks.h * TILE) / 2) / TILE);
-        navigateTo(goalTX, goalTY);
+      // Pick up weapon immediately if available — workbench is the new source
+      const weapon = takeWeapon();
+      if (weapon) {
+        this.weapon = weapon.def;
+        events.emit(EV.WEAPON_EQUIPPED, { citizen: this, weapon });
       }
     }
 
-    // ── Check for nearby blueprints (highest priority) ────────
+    // ── Check for nearby blueprints / wander ─────────────────
     if (this.state === 'IDLE' && !this.target && this._waypoints.length === 0 && this._idleTimer <= 0) {
-      // Barracks patrol — citizens assigned to barracks patrol its radius
-      const assignedGuardhouse = (this.assignedBuilding &&
-        this.assignedBuilding.type === 'barracks')
-          ? this.assignedBuilding : null;
-
-      if (assignedGuardhouse && assignedGuardhouse.state === 'complete') {
-        // Patrol within GUARDHOUSE_PATROL_RADIUS around the guardhouse
-        const ghx = (assignedGuardhouse.tx + assignedGuardhouse.w / 2) * TILE;
-        const ghy = (assignedGuardhouse.ty + assignedGuardhouse.h / 2) * TILE;
-        const angle = Math.random() * Math.PI * 2;
-        const dist  = Math.random() * GUARDHOUSE_PATROL_RADIUS * 0.8;
-        const px    = ghx + Math.cos(angle) * dist;
-        const py    = ghy + Math.sin(angle) * dist;
-        const ptx   = Math.floor(px / TILE);
-        const pty   = Math.floor(py / TILE);
-        navigateTo(ptx, pty);
-        this._idleTimer = 2000 + Math.random() * 2000;
+      const bp = findNearestBlueprint(this.x, this.y);
+      if (bp) {
+        this.state = 'BUILDING';
+        this._buildTarget = bp;
+        const goalTX = Math.floor((bp.tx * TILE + (bp.w * TILE) / 2) / TILE);
+        const goalTY = Math.floor((bp.ty * TILE + (bp.h * TILE) / 2) / TILE);
+        navigateTo(goalTX, goalTY);
       } else {
-        const bp = findNearestBlueprint(this.x, this.y);
-        if (bp) {
-          this.state = 'BUILDING';
-          this._buildTarget = bp;
-          const goalTX = Math.floor((bp.tx * TILE + (bp.w * TILE) / 2) / TILE);
-          const goalTY = Math.floor((bp.ty * TILE + (bp.h * TILE) / 2) / TILE);
-          navigateTo(goalTX, goalTY);
-        } else {
-          const wt = randomWanderTile(this.x, this.y);
-          if (wt) navigateTo(wt.tx, wt.ty);
-          this._idleTimer = 1500 + Math.random() * 2500;
-        }
+        const wt = randomWanderTile(this.x, this.y);
+        if (wt) navigateTo(wt.tx, wt.ty);
+        this._idleTimer = 1500 + Math.random() * 2500;
       }
     }
 

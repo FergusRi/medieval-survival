@@ -49,12 +49,11 @@ export function enemyDied() {
 
 // ---- Loss condition -----------------------------------------
 export function checkLoss() {
-  // Capital destroyed AND no settlements remaining with alive citizens
-  const hasCapital    = [...placedBuildings.values()].some(b => b.type === 'capital');
+  // Loss if no citizens remain
   const hasCitizens = citizens.length > 0;
 
-  if (!hasCapital && !hasCitizens) {
-    events.emit(EV.GAME_OVER, { waveNumber: _waveNumber, reason: 'capital_destroyed_no_citizens' });
+  if (!hasCitizens) {
+    events.emit(EV.GAME_OVER, { waveNumber: _waveNumber, reason: 'no_citizens_remaining' });
     return true;
   }
   return false;

@@ -12,6 +12,7 @@ import { placedBuildings }      from '../buildings/placement.js';
 import { citizens }             from '../citizens/citizen.js';
 import { BUILDINGS }            from '../buildings/registry.js';
 import { TOWER_COMBAT }         from '../combat/towers.js';
+import { staffCount }           from '../citizens/assignment.js';
 import { SOIL }                 from '../farming/farm.js';
 import { TILE_SIZE }            from '../world/map.js';
 import { getGhostType }         from '../buildings/placement.js';
@@ -418,7 +419,7 @@ function _renderBuildingPanel(b) {
     </div>
 
     ${totalSlots > 0 ? `
-      <div class="panel-section">Staff (${b.staff.length}/${totalSlots})</div>
+      <div class="panel-section">Staff (${staffCount(b.id)}/${totalSlots})</div>
       <div class="staff-row">${staffChips.join('')}</div>
     ` : ''}
 

@@ -4,16 +4,23 @@
 import { BUILDINGS } from './registry.js';
 import { createSoilTiles } from '../farming/farm.js';
 
-// Wall types that support rotation
-export const ROTATABLE_BUILDINGS = new Set(['palisade', 'stone_wall']);
+// Construction progress threshold for frame stage (30% = frame visible)
+export const FRAME_THRESHOLD = 0.30;
+
+// Wall/door types that visually connect to neighbours
+export const WALL_TYPES = new Set([
+  'wall_wood', 'wall_stone', 'wall_metal', 'door_wood', 'door_reinforced',
+]);
+
+// Turret types that store an aim angle
+export const TURRET_TYPES = new Set(['turret_ballista', 'turret_cannon']);
 
 export class Building {
   constructor(type, tx, ty, rotation = 0) {
     this.id   = crypto.randomUUID();
     this.type = type;
     const def = BUILDINGS[type];
-    // rotation: 0 = horizontal (E-W), 1 = vertical (N-S)
-    this.rotation = ROTATABLE_BUILDINGS.has(type) ? rotation : 0;
+    this.rotation = 0; // rotation reserved for future use
     this.tx = tx; this.ty = ty;
     this.w  = def.w; this.h  = def.h;
     this.hp = def.hp; this.maxHp = def.hp;
@@ -24,13 +31,16 @@ export class Building {
     this.state = def.buildTime === 0 ? 'complete' : 'blueprint';
     this.sortY = (ty + def.h) * 32;
     // Combat state
-    this._flashTimer = 0; // seconds remaining of damage flash
+    this._flashTimer = 0;
+    // Turret aim angle (radians, updated each frame by towers.js)
+    this._aimAngle = TURRET_TYPES.has(type) ? 0 : null;
     // Farm Plot: per-tile soil state grid
     if (type === 'farm_plot') {
       this.soilTiles    = createSoilTiles(def.w * def.h);
       this.selectedCrop = 'wheat';
     }
   }
+
   get footprintTiles() {
     const tiles = [];
     for (let dy = 0; dy < this.h; dy++)

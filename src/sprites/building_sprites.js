@@ -508,27 +508,222 @@ function _drawStoneWall(ctx, x, y, w, h) {
   }
 }
 
+// ── New modular building draw functions ───────────────────
+
+function _drawWallWood(ctx, x, y, w, h) {
+  ctx.fillStyle = '#8B5E3C';
+  ctx.fillRect(x, y + h * 0.1, w, h * 0.9);
+  ctx.strokeStyle = '#5C3A1E'; ctx.lineWidth = 1;
+  // Vertical planks
+  const planks = Math.max(2, Math.round(w / 10));
+  for (let i = 0; i <= planks; i++) {
+    const px = x + (i / planks) * w;
+    ctx.beginPath(); ctx.moveTo(px, y + h * 0.1); ctx.lineTo(px, y + h); ctx.stroke();
+  }
+  // Top cap
+  ctx.fillStyle = '#A0724A';
+  ctx.fillRect(x, y + h * 0.1, w, h * 0.12);
+}
+
+function _drawWallStone(ctx, x, y, w, h) {
+  _stoneTex(ctx, x, y + h * 0.1, w, h * 0.9, '#8a8a82', '#6a6a62');
+  ctx.fillStyle = '#9a9a92';
+  ctx.fillRect(x, y + h * 0.1, w, h * 0.1);
+}
+
+function _drawWallMetal(ctx, x, y, w, h) {
+  ctx.fillStyle = '#7a8a96';
+  ctx.fillRect(x, y + h * 0.1, w, h * 0.9);
+  ctx.strokeStyle = '#5a6a76'; ctx.lineWidth = 1;
+  for (let i = 0; i < 3; i++) {
+    const ry = y + h * 0.25 + i * (h * 0.22);
+    ctx.beginPath(); ctx.moveTo(x + 2, ry); ctx.lineTo(x + w - 2, ry); ctx.stroke();
+  }
+  // Rivet dots
+  ctx.fillStyle = '#4a5a66';
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath(); ctx.arc(x + w * 0.15, y + h * 0.3 + i * h * 0.22, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + w * 0.85, y + h * 0.3 + i * h * 0.22, 2, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function _drawDoorWood(ctx, x, y, w, h) {
+  // Frame
+  ctx.fillStyle = '#6B4423'; ctx.fillRect(x, y + h * 0.05, w, h * 0.95);
+  // Door panel
+  ctx.fillStyle = '#A0724A';
+  ctx.fillRect(x + w * 0.1, y + h * 0.1, w * 0.8, h * 0.9);
+  // Panels
+  ctx.strokeStyle = '#6B4423'; ctx.lineWidth = 1;
+  ctx.strokeRect(x + w * 0.18, y + h * 0.15, w * 0.64, h * 0.35);
+  ctx.strokeRect(x + w * 0.18, y + h * 0.55, w * 0.64, h * 0.35);
+  // Handle
+  ctx.fillStyle = '#D4A030';
+  ctx.beginPath(); ctx.arc(x + w * 0.72, y + h * 0.5, 3, 0, Math.PI * 2); ctx.fill();
+}
+
+function _drawDoorReinforced(ctx, x, y, w, h) {
+  ctx.fillStyle = '#4a5a66'; ctx.fillRect(x, y + h * 0.05, w, h * 0.95);
+  ctx.strokeStyle = '#8a9aaa'; ctx.lineWidth = 1.5;
+  // X brace
+  ctx.beginPath(); ctx.moveTo(x + 2, y + h * 0.1); ctx.lineTo(x + w - 2, y + h); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x + w - 2, y + h * 0.1); ctx.lineTo(x + 2, y + h); ctx.stroke();
+  // Handle
+  ctx.fillStyle = '#D4A030';
+  ctx.beginPath(); ctx.arc(x + w * 0.72, y + h * 0.5, 3, 0, Math.PI * 2); ctx.fill();
+}
+
+function _drawBed(ctx, x, y, w, h) {
+  // Frame
+  ctx.fillStyle = '#8B5E3C'; ctx.fillRect(x + 2, y + h * 0.3, w - 4, h * 0.65);
+  // Mattress
+  ctx.fillStyle = '#D4C8A0'; ctx.fillRect(x + 3, y + h * 0.35, w - 6, h * 0.55);
+  // Pillow
+  ctx.fillStyle = '#F0EAD6'; ctx.fillRect(x + 4, y + h * 0.37, w * 0.35, h * 0.2);
+  // Headboard
+  ctx.fillStyle = '#6B4423'; ctx.fillRect(x + 1, y + h * 0.25, w - 2, h * 0.12);
+}
+
+function _drawWorkbench(ctx, x, y, w, h) {
+  // Legs
+  ctx.fillStyle = '#6B4423';
+  ctx.fillRect(x + 3,     y + h * 0.55, 5, h * 0.45);
+  ctx.fillRect(x + w - 8, y + h * 0.55, 5, h * 0.45);
+  // Top surface
+  ctx.fillStyle = '#A0724A'; ctx.fillRect(x, y + h * 0.45, w, h * 0.13);
+  // Tools on top
+  ctx.fillStyle = '#8a8a8a';
+  ctx.fillRect(x + w * 0.1, y + h * 0.28, 4, h * 0.18);
+  ctx.fillStyle = '#C0A030';
+  ctx.fillRect(x + w * 0.55, y + h * 0.3, w * 0.3, 5);
+}
+
+function _drawStorageCrate(ctx, x, y, w, h) {
+  ctx.fillStyle = '#A0844A'; ctx.fillRect(x + 1, y + h * 0.2, w - 2, h * 0.8);
+  ctx.strokeStyle = '#6B4423'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(x + 1, y + h * 0.2, w - 2, h * 0.8);
+  // Cross braces
+  ctx.beginPath(); ctx.moveTo(x + 1, y + h * 0.2); ctx.lineTo(x + w - 1, y + h); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x + w - 1, y + h * 0.2); ctx.lineTo(x + 1, y + h); ctx.stroke();
+  // Lid line
+  ctx.beginPath(); ctx.moveTo(x + 1, y + h * 0.35); ctx.lineTo(x + w - 1, y + h * 0.35); ctx.stroke();
+}
+
+function _drawCookingPot(ctx, x, y, w, h) {
+  // Fire
+  ctx.fillStyle = '#FF6600';
+  ctx.beginPath(); ctx.ellipse(x + w/2, y + h * 0.82, w * 0.25, h * 0.12, 0, 0, Math.PI * 2); ctx.fill();
+  // Pot body
+  ctx.fillStyle = '#4a4a4a';
+  ctx.beginPath(); ctx.ellipse(x + w/2, y + h * 0.65, w * 0.38, h * 0.28, 0, 0, Math.PI * 2); ctx.fill();
+  // Pot rim
+  ctx.fillStyle = '#6a6a6a';
+  ctx.beginPath(); ctx.ellipse(x + w/2, y + h * 0.45, w * 0.38, h * 0.1, 0, 0, Math.PI * 2); ctx.fill();
+  // Handles
+  ctx.strokeStyle = '#6a6a6a'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(x + w * 0.18, y + h * 0.48, 5, Math.PI * 0.5, Math.PI * 1.5); ctx.stroke();
+  ctx.beginPath(); ctx.arc(x + w * 0.82, y + h * 0.48, 5, -Math.PI * 0.5, Math.PI * 0.5); ctx.stroke();
+}
+
+function _drawTorch(ctx, x, y, w, h) {
+  // Pole
+  ctx.fillStyle = '#8B5E3C';
+  ctx.fillRect(x + w * 0.42, y + h * 0.35, w * 0.16, h * 0.65);
+  // Flame
+  ctx.fillStyle = '#FF8C00';
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.5, y + h * 0.05);
+  ctx.quadraticCurveTo(x + w * 0.7, y + h * 0.2, x + w * 0.58, y + h * 0.38);
+  ctx.lineTo(x + w * 0.42, y + h * 0.38);
+  ctx.quadraticCurveTo(x + w * 0.3, y + h * 0.2, x + w * 0.5, y + h * 0.05);
+  ctx.fill();
+  ctx.fillStyle = '#FFD700';
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.5, y + h * 0.12);
+  ctx.quadraticCurveTo(x + w * 0.62, y + h * 0.22, x + w * 0.55, y + h * 0.36);
+  ctx.lineTo(x + w * 0.45, y + h * 0.36);
+  ctx.quadraticCurveTo(x + w * 0.38, y + h * 0.22, x + w * 0.5, y + h * 0.12);
+  ctx.fill();
+}
+
+function _drawTable(ctx, x, y, w, h) {
+  // Legs
+  ctx.fillStyle = '#6B4423';
+  ctx.fillRect(x + 3,     y + h * 0.5, 4, h * 0.5);
+  ctx.fillRect(x + w - 7, y + h * 0.5, 4, h * 0.5);
+  // Surface
+  ctx.fillStyle = '#C8A060'; ctx.fillRect(x, y + h * 0.38, w, h * 0.14);
+  ctx.strokeStyle = '#8B5E3C'; ctx.lineWidth = 0.5;
+  ctx.strokeRect(x, y + h * 0.38, w, h * 0.14);
+}
+
+function _drawTurretBallista(ctx, x, y, w, h, aimAngle) {
+  const cx = x + w / 2, cy = y + h / 2;
+  // Base platform
+  ctx.fillStyle = '#8B5E3C'; ctx.fillRect(x + 2, y + h * 0.4, w - 4, h * 0.6);
+  ctx.strokeStyle = '#5C3A1E'; ctx.lineWidth = 1; ctx.strokeRect(x + 2, y + h * 0.4, w - 4, h * 0.6);
+  // Swivel ring
+  ctx.fillStyle = '#6a6a6a';
+  ctx.beginPath(); ctx.arc(cx, cy, w * 0.25, 0, Math.PI * 2); ctx.fill();
+  // Barrel (rotates with aimAngle)
+  const angle = aimAngle ?? -Math.PI / 2;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  ctx.fillStyle = '#5C3A1E';
+  ctx.fillRect(-2, -h * 0.35, 4, h * 0.35);
+  // Arms
+  ctx.fillStyle = '#8B5E3C';
+  ctx.fillRect(-w * 0.3, -3, w * 0.6, 6);
+  ctx.restore();
+}
+
+function _drawTurretCannon(ctx, x, y, w, h, aimAngle) {
+  const cx = x + w / 2, cy = y + h / 2;
+  // Stone base
+  _stoneTex(ctx, x, y + h * 0.35, w, h * 0.65, '#8a8a82', '#6a6a62');
+  // Swivel ring
+  ctx.fillStyle = '#4a4a4a';
+  ctx.beginPath(); ctx.arc(cx, cy, w * 0.28, 0, Math.PI * 2); ctx.fill();
+  // Barrel (rotates with aimAngle)
+  const angle = aimAngle ?? -Math.PI / 2;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  ctx.fillStyle = '#2a2a2a';
+  ctx.fillRect(-4, -h * 0.38, 8, h * 0.38);
+  // Muzzle ring
+  ctx.strokeStyle = '#6a6a6a'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0, -h * 0.38, 5, 0, Math.PI * 2); ctx.stroke();
+  ctx.restore();
+}
+
 // ── Dispatch map ──────────────────────────────────────────
 
 const DRAW_FNS = {
-  capital:      _drawCapital,
-  log_cabin:    _drawLogCabin,
-  farm_plot:    _drawFarmPlot,
-  lumber_camp:  _drawLumberCamp,
-  pit_mine:     _drawPitMine,
-  storehouse:   _drawStorehouse,
-  forge:        _drawForge,
-  market:       _drawMarket,
-  herbalist:    _drawHerbalist,
-  church:       _drawChurch,
-  barracks:     _drawBarracks,
-  watchtower:   _drawWatchtower,
-  arrow_tower:  _drawArrowTower,
-  palisade:     _drawPalisade,
-  stone_wall:   _drawStoneWall,
+  // Production
+  farm_plot:         _drawFarmPlot,
+  lumber_camp:       _drawLumberCamp,
+  pit_mine:          _drawPitMine,
+  // Structure — walls/doors use adjacency variants (see drawBuildingSprite)
+  wall_wood:         _drawWallWood,
+  wall_stone:        _drawWallStone,
+  wall_metal:        _drawWallMetal,
+  door_wood:         _drawDoorWood,
+  door_reinforced:   _drawDoorReinforced,
+  // Furniture
+  bed:               _drawBed,
+  workbench:         _drawWorkbench,
+  storage_crate:     _drawStorageCrate,
+  cooking_pot:       _drawCookingPot,
+  torch:             _drawTorch,
+  table:             _drawTable,
+  // Military
+  turret_ballista:   _drawTurretBallista,
+  turret_cannon:     _drawTurretCannon,
 };
 
-export function drawBuildingSprite(ctx, type, state, x, y, w, h) {
+export function drawBuildingSprite(ctx, type, state, x, y, w, h, aimAngle) {
   ctx.save();
 
   if (state === 'rubble') {
@@ -545,7 +740,7 @@ export function drawBuildingSprite(ctx, type, state, x, y, w, h) {
 
   const fn = DRAW_FNS[type];
   if (fn) {
-    fn(ctx, x, y, w, h);
+    fn(ctx, x, y, w, h, aimAngle);
   } else {
     // Fallback: plain box
     _wall(ctx, x + w * 0.1, y + h * 0.4, w * 0.8, h * 0.6, '#a09080');

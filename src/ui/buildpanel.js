@@ -2,7 +2,7 @@
 // buildpanel.js — Build panel UI (Middle Path redesign)
 // Flat list grouped by category, no tier gates
 // ============================================================
-import { BUILDINGS } from '../buildings/registry.js';
+import { BUILDINGS, BUILDING_CATEGORIES } from '../buildings/registry.js';
 import { BUILDING_COSTS } from '../resources/resources.js';
 import { startGhost, cancelGhost } from '../buildings/placement.js';
 
@@ -15,15 +15,11 @@ function costLabel(type) {
   return Object.entries(cost).map(([k, v]) => `${v} ${k}`).join(' · ');
 }
 
-// Category grouping for flat display
-const CATEGORIES = [
-  { label: '🏠 Housing',          keys: ['log_cabin'] },
-  { label: '🌾 Food & Resources', keys: ['farm_plot', 'lumber_camp', 'pit_mine', 'storehouse'] },
-  { label: '⚒ Crafting',          keys: ['forge', 'market'] },
-  { label: '⛪ Civic',             keys: ['herbalist', 'church'] },
-  { label: '⚔ Military',          keys: ['barracks', 'watchtower', 'arrow_tower'] },
-  { label: '🪵 Walls',             keys: ['palisade', 'stone_wall'] },
-];
+// Use BUILDING_CATEGORIES from registry (drives Phase 7 tab UI)
+const CATEGORIES = BUILDING_CATEGORIES.map(cat => ({
+  label: cat.label,
+  keys:  cat.types,
+}));
 
 export function initBuildPanel() {
   // ── Toggle button ─────────────────────────────────────────
