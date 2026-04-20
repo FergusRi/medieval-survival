@@ -595,6 +595,8 @@ export class Citizen {
     }
 
     ctx.restore();
+  }
+
   // ── Portrait: draw citizen into a small canvas ──────────────
   drawPortrait(canvas) {
     const ctx = canvas.getContext('2d');
@@ -647,8 +649,6 @@ export class Citizen {
     ctx.fillRect(cx - headR*0.7, hatTopY - 3, headR*1.4, 5);
 
     ctx.restore();
-  }
-
   }
 }
 
