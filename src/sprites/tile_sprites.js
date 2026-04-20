@@ -1,17 +1,15 @@
 // ============================================================
-// tile_sprites.js — Image-based tile sprite loader
-// Map Theme System: each playthrough picks ONE theme at random.
-// All tiles remap to that theme's palette — no biome mixing.
+// tile_sprites.js — Tile + decoration sprite loader
+// Map Theme System: one theme per playthrough (grasslands/tundra/plains)
+// Ground tiles + decoration sprites (trees, rocks) all theme-matched.
 // ============================================================
 
 import { T } from '../world/tiles.js';
 
-const tileLoaded = new Map(); // tileId → ImageBitmap[]
-const treeLoaded = new Map(); // name   → ImageBitmap
+const tileLoaded  = new Map(); // tileId → ImageBitmap[]
+const decorLoaded = new Map(); // key ('tree_0','rock_1' etc) → ImageBitmap
 
-// ── Map Themes ───────────────────────────────────────────────
-// Each theme defines tile path overrides. Unspecified tiles
-// fall back to the BASE_VARIANTS defaults below.
+// ── Base ground tile variants ─────────────────────────────────
 const BASE_VARIANTS = {
   [T.GRASS]:          ['assets/tiles/grass.png'],
   [T.DIRT]:           ['assets/tiles/dirt.png'],
@@ -23,43 +21,48 @@ const BASE_VARIANTS = {
   [T.DEEP_WATER]:     ['assets/tiles/deep_water.png'],
 };
 
+// ── Map Themes ────────────────────────────────────────────────
+// tile_overrides: remap ground tiles for this theme
+// decor: tree[0], tree[1], rock[0], rock[1] sprites
 const MAP_THEMES = {
   grasslands: {
     name: 'Grasslands',
-    // grass + forest — default palette, lush green
-    overrides: {}, // uses BASE_VARIANTS as-is
+    tile_overrides: {},
+    decor: {
+      tree: ['assets/trees/tree_pine_grass.png', 'assets/trees/tree_oak.png'],
+      rock: ['assets/decor/rock_grass.png',      'assets/decor/rock_grass2.png'],
+    },
   },
   tundra: {
     name: 'Tundra',
-    overrides: {
-      [T.GRASS]:     ['assets/tiles/tundra.png'],   // icy ground instead of green
-      [T.SCRUBLAND]: ['assets/tiles/tundra.png'],   // scrubland → frozen brush
-      [T.DIRT]:      ['assets/tiles/tundra.png'],   // dirt → frozen soil
-      [T.SAND]:      ['assets/tiles/tundra.png'],   // no sand in tundra
+    tile_overrides: {
+      [T.GRASS]:     ['assets/tiles/tundra.png'],
+      [T.SCRUBLAND]: ['assets/tiles/tundra.png'],
+      [T.DIRT]:      ['assets/tiles/tundra.png'],
+      [T.SAND]:      ['assets/tiles/tundra.png'],
+      [T.FOREST]:    ['assets/tiles/tundra.png'],
+    },
+    decor: {
+      tree: ['assets/trees/tree_dead.png',   'assets/trees/tree_snow.png'],
+      rock: ['assets/decor/rock_tundra.png', 'assets/decor/rock_tundra2.png'],
     },
   },
   plains: {
     name: 'Plains',
-    overrides: {
-      [T.GRASS]:     ['assets/tiles/plains.png'],   // savannah/plains ground
-      [T.SCRUBLAND]: ['assets/tiles/plains.png'],   // dry brush same base
-      [T.DIRT]:      ['assets/tiles/dirt.png'],
+    tile_overrides: {
+      [T.GRASS]:     ['assets/tiles/plains.png'],
+      [T.SCRUBLAND]: ['assets/tiles/plains.png'],
+      [T.FOREST]:    ['assets/tiles/plains.png'],
+    },
+    decor: {
+      tree: ['assets/trees/tree_acacia.png',  'assets/trees/tree_scrub.png'],
+      rock: ['assets/decor/rock_plains.png',  'assets/decor/rock_plains2.png'],
     },
   },
 };
 
 const THEME_KEYS = Object.keys(MAP_THEMES);
-
-// Picked once per game load — exported so UI/map gen can read it
 export let currentTheme = null;
-
-// ── Tree sprites ─────────────────────────────────────────────
-const TREE_IMAGES = {
-  pine:  'assets/trees/tree_pine.png',
-  stump: 'assets/trees/tree_stump.png',
-};
-
-export const PINE_TILES = new Set([T.FOREST]);
 
 // Chunk size: 2^4 = 16 tiles per chunk
 const CHUNK_BITS = 4;
@@ -70,25 +73,26 @@ async function loadImage(path) {
   return createImageBitmap(blob);
 }
 
-// Pick a random theme and build the final TILE_VARIANTS map for this run
 function buildThemeVariants() {
   const key   = THEME_KEYS[Math.floor(Math.random() * THEME_KEYS.length)];
   const theme = MAP_THEMES[key];
   currentTheme = key;
   console.log(`[sprites] Map theme: ${theme.name}`);
 
+  // Merge base + overrides for ground tiles
   const merged = {};
   for (const [id, paths] of Object.entries(BASE_VARIANTS)) {
-    merged[id] = theme.overrides[id] ?? paths;
+    merged[id] = theme.tile_overrides[id] ?? paths;
   }
-  return merged;
+  return { tileVariants: merged, decor: theme.decor };
 }
 
 export async function preloadSprites() {
-  const variants = buildThemeVariants();
+  const { tileVariants, decor } = buildThemeVariants();
 
   const jobs = [
-    ...Object.entries(variants).map(async ([id, paths]) => {
+    // Ground tiles
+    ...Object.entries(tileVariants).map(async ([id, paths]) => {
       const bitmaps = [];
       for (const path of paths) {
         try { bitmaps.push(await loadImage(path)); }
@@ -96,16 +100,21 @@ export async function preloadSprites() {
       }
       if (bitmaps.length) tileLoaded.set(Number(id), bitmaps);
     }),
-    ...Object.entries(TREE_IMAGES).map(async ([name, path]) => {
-      try { treeLoaded.set(name, await loadImage(path)); }
-      catch (e) { console.warn(`[sprites] Failed tree ${path}:`, e); }
-    }),
+    // Decoration sprites: tree_0, tree_1, rock_0, rock_1
+    ...Object.entries(decor).flatMap(([kind, paths]) =>
+      paths.map(async (path, i) => {
+        try {
+          decorLoaded.set(`${kind}_${i}`, await loadImage(path));
+        } catch (e) { console.warn(`[sprites] Failed decor ${path}:`, e); }
+      })
+    ),
   ];
+
   await Promise.all(jobs);
-  console.log(`[sprites] Loaded ${tileLoaded.size} tile types, ${treeLoaded.size} trees`);
+  console.log(`[sprites] Loaded ${tileLoaded.size} tile types, ${decorLoaded.size} decor sprites`);
 }
 
-// Deterministic chunk-level hash — same 16×16 chunk always picks same variant
+// ── Tile sprite lookup ────────────────────────────────────────
 function chunkHash(tx, ty) {
   const cx = tx >> CHUNK_BITS;
   const cy = ty >> CHUNK_BITS;
@@ -124,4 +133,16 @@ export function getTileSprite(tileId, tx = 0, ty = 0) {
   return variants[idx];
 }
 
-export function getTreeSprite(name) { return treeLoaded.get(name) ?? null; }
+// ── Decoration sprite lookup ──────────────────────────────────
+// kind: 'tree' | 'rock', variant: 0 | 1
+export function getDecorSprite(kind, variant = 0) {
+  return decorLoaded.get(`${kind}_${variant}`) ?? decorLoaded.get(`${kind}_0`) ?? null;
+}
+
+// Legacy tree sprite (kept for backwards compat — returns theme tree_0)
+export function getTreeSprite(name) {
+  if (name === 'pine' || name === 'tree') return decorLoaded.get('tree_0') ?? null;
+  return decorLoaded.get('tree_1') ?? decorLoaded.get('tree_0') ?? null;
+}
+
+export const PINE_TILES = new Set([T.FOREST]);

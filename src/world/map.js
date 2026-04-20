@@ -1,5 +1,6 @@
 // ============================================================
 // map.js — 500×500 Uint16Array tile store + Whittaker biomes
+// Decoration pass: trees + rocks scattered as entities, not tiles
 // ============================================================
 
 import { T, TILE_DEF } from './tiles.js';
@@ -10,6 +11,10 @@ export const TILE_SIZE = 32;
 export const MAP_PX    = MAP_SIZE * TILE_SIZE;
 
 export const tileMap = new Uint16Array(MAP_SIZE * MAP_SIZE);
+
+// Decoration entity list — populated by generateMap()
+// Each entry: { tx, ty, type: 'tree'|'rock', variant: 0|1 }
+export const decorations = [];
 
 // ---- Accessors -----------------------------------------------
 export function getTile(tx, ty) {
@@ -55,11 +60,18 @@ function whittaker(e, m, t) {
   return T.SAND;
 }
 
+// Tiles eligible for tree/rock decoration placement
+const TREE_ELIGIBLE = new Set([T.GRASS, T.FOREST, T.SCRUBLAND]);
+const ROCK_ELIGIBLE = new Set([T.GRASS, T.SCRUBLAND, T.DIRT, T.SAND]);
+const TREE_RATE     = 0.06;  // ~6% of eligible tiles get a tree
+const ROCK_RATE     = 0.025; // ~2.5% of eligible tiles get a rock
+
 // ---- Map generation ------------------------------------------
 export let MAP_SEED = 0;
 
 export function generateMap(seed = Date.now()) {
   MAP_SEED = seed;
+  decorations.length = 0;
   const rng = mulberry32(seed);
 
   const elevMap = buildNoiseMap(MAP_SIZE, [
@@ -94,9 +106,25 @@ export function generateMap(seed = Date.now()) {
     }
   }
 
+  // Pass 2: scatter decoration entities (trees + rocks)
+  // Uses a separate deterministic hash so it doesn't conflict with tile RNG
+  for (let ty = 1; ty < MAP_SIZE - 1; ty++) {
+    for (let tx = 1; tx < MAP_SIZE - 1; tx++) {
+      const tile = getTile(tx, ty);
+      const h = tileHash(MAP_SEED + 1, tx, ty);
+      const frac = h / 0xFFFFFFFF;
 
+      if (TREE_ELIGIBLE.has(tile) && frac < TREE_RATE) {
+        // variant 0 = primary tree, 1 = secondary tree for this theme
+        decorations.push({ tx, ty, type: 'tree', variant: (h >> 8) & 1 });
+      } else if (ROCK_ELIGIBLE.has(tile) && frac < ROCK_RATE) {
+        decorations.push({ tx, ty, type: 'rock', variant: (h >> 8) & 1 });
+      }
+    }
+  }
+
+  console.log(`[map] generated — ${MAP_SIZE}×${MAP_SIZE}, seed=${seed}, ${decorations.filter(d=>d.type==='tree').length} trees, ${decorations.filter(d=>d.type==='rock').length} rocks`);
   events.emit(EV.MAP_LOADED, { width: MAP_SIZE, height: MAP_SIZE });
-  console.log('[map] generated — 500×500, seed=' + seed);
 }
 
 // ---- Deterministic per-tile hash ----------------------------

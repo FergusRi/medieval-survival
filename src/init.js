@@ -7,11 +7,11 @@ import { events, EV } from './engine/events.js';
 import { initRenderer, beginFrame, endFrame, getCtx } from './engine/renderer.js';
 import { initInput, handleKeyPan } from './engine/input.js';
 import { camera } from './engine/camera.js';
-import { generateMap, getTile, MAP_SIZE, TILE_SIZE, MAP_PX, MAP_SEED } from './world/map.js';
+import { generateMap, getTile, MAP_SIZE, TILE_SIZE, MAP_PX, MAP_SEED, decorations } from './world/map.js';
 import { initResourceNodes } from './world/resource_nodes.js';
 import { initMinimap, drawMinimap } from './ui/minimap.js';
 import { T, TILE_DEF } from './world/tiles.js';
-import { preloadSprites, getTileSprite, getTreeSprite, PINE_TILES } from './sprites/tile_sprites.js';
+import { preloadSprites, getTileSprite, getDecorSprite, PINE_TILES } from './sprites/tile_sprites.js';
 import { preloadBuildingSprites } from './sprites/building_sprites.js';
 import { resources, initProduction } from './resources/resources.js';
 import { renderBuildings, drawBuilding, buildingSortY, placedBuildings, updateGhostPos, handleBuildClick, cancelGhost, getGhostType, cycleGhostRotation, destroyBuilding, drawBuildingDamageOverlay } from './buildings/placement.js';
@@ -49,7 +49,6 @@ function overlayFrac(tx, ty) { return tileHash(tx + 9999, ty + 7777) / 0xFFFFFFF
 
 const GRASS_TUFT_RATE = 0.08;
 const SAND_TUFT_RATE  = 0.05;
-const PINE_DENSITY    = 0.35;
 const MOUNTAIN_TILES  = new Set([T.MOUNTAIN, T.MOUNTAIN_STONE]);
 
 function isMountainEdge(tx, ty) {
@@ -227,27 +226,34 @@ function render() {
   // Collect all drawable entities with a sortY value, then draw
   // in ascending sortY order so "closer" (lower) objects appear in front.
 
-  const pineSprite = getTreeSprite('pine');
-
   // Build sorted draw list
   const drawList = [];
 
-  // Trees (sortY = bottom of 2-tile-tall sprite = (ty+1)*TILE)
-  const treeStartY = Math.max(0, ty0 - 2);
-  for (let ty = treeStartY; ty < ty1; ty++) {
-    for (let tx = tx0; tx < tx1; tx++) {
-      const id = getTile(tx, ty);
-      if (!PINE_TILES.has(id)) continue;
-      if (tileFrac(tx, ty) >= PINE_DENSITY) continue;
-      drawList.push({
-        sortY: (ty + 1) * TILE_SIZE,
-        draw: () => {
-          const px = tx * TILE_SIZE, py = (ty - 1) * TILE_SIZE;
-          if (pineSprite) ctx.drawImage(pineSprite, px, py, TILE_SIZE, TILE_SIZE * 2);
-          else { ctx.fillStyle = '#2d5a1b'; ctx.fillRect(px, py + 4, TILE_SIZE, TILE_SIZE * 2 - 4); }
+  // Decorations (trees + rocks) from map decoration list — Y-sorted sprites
+  // Trees render as 2-tile-tall sprites (occupy tile above); rocks as 1-tile
+  for (const d of decorations) {
+    if (d.tx < tx0 || d.tx >= tx1) continue;
+    if (d.type === 'tree' && (d.ty + 1 < ty0 || d.ty >= ty1)) continue;
+    if (d.type === 'rock' && (d.ty < ty0 || d.ty >= ty1)) continue;
+    if (d.depleted) continue; // harvested — don't render
+
+    const isTree = d.type === 'tree';
+    const spr    = getDecorSprite(d.type, d.variant);
+    const dtx    = d.tx, dty = d.ty;
+
+    drawList.push({
+      sortY: isTree ? (dty + 1) * TILE_SIZE : (dty + 0.8) * TILE_SIZE,
+      draw: () => {
+        const px = dtx * TILE_SIZE;
+        const py = isTree ? (dty - 1) * TILE_SIZE : dty * TILE_SIZE;
+        const h  = isTree ? TILE_SIZE * 2 : TILE_SIZE;
+        if (spr) ctx.drawImage(spr, px, py, TILE_SIZE, h);
+        else {
+          ctx.fillStyle = isTree ? '#2d5a1b' : '#888';
+          ctx.fillRect(px + 4, py + 4, TILE_SIZE - 8, h - 8);
         }
-      });
-    }
+      }
+    });
   }
 
   // Buildings (sortY = front-face baseline)

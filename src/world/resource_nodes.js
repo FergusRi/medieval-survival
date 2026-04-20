@@ -1,20 +1,19 @@
 // ============================================================
 // resource_nodes.js — Harvestable resource node registry
-// Flood-fills map tiles into cluster nodes on init.
-// FOREST tiles → wood nodes, STONE tiles → stone nodes.
+// Driven by the decorations[] array from map.js.
+// tree decorations → wood nodes, rock decorations → stone nodes.
 // ============================================================
 
-import { getTile, MAP_SIZE } from './map.js';
-import { T } from './tiles.js';
+import { decorations, TILE_SIZE } from './map.js';
 
-const MIN_CLUSTER_SIZE   = 4;   // ignore tiny noise clusters
-const MAX_WORKERS_WOOD   = 2;
-const MAX_WORKERS_STONE  = 1;
-const WOOD_POOL          = 500;
-const STONE_POOL         = 300;
+const MAX_WORKERS_WOOD  = 2;
+const MAX_WORKERS_ROCK  = 1;
+const WOOD_PER_NODE     = 80;   // wood per individual tree
+const STONE_PER_NODE    = 50;   // stone per individual rock
 
 // ── Node registry ─────────────────────────────────────────────
-const _nodes = [];   // { id, type, cx, cy, amount, maxAmount, workersActive }
+// { id, type, tx, ty, cx, cy, amount, maxAmount, workersActive, depleted }
+const _nodes = [];
 let   _nextId = 1;
 
 export function getNodes() { return _nodes; }
@@ -24,55 +23,31 @@ export function initResourceNodes() {
   _nodes.length = 0;
   _nextId = 1;
 
-  const visited = new Uint8Array(MAP_SIZE * MAP_SIZE);
-
-  for (let ty = 0; ty < MAP_SIZE; ty++) {
-    for (let tx = 0; tx < MAP_SIZE; tx++) {
-      const idx = ty * MAP_SIZE + tx;
-      if (visited[idx]) continue;
-
-      const tile = getTile(tx, ty);
-      if (tile !== T.FOREST && tile !== T.STONE) continue;
-
-      // Flood-fill this cluster
-      const type   = tile === T.FOREST ? 'wood' : 'stone';
-      const queue  = [[tx, ty]];
-      const cells  = [];
-      visited[idx] = 1;
-
-      while (queue.length) {
-        const [cx, cy] = queue.pop();
-        cells.push([cx, cy]);
-        for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-          const nx = cx + dx, ny = cy + dy;
-          if (nx < 0 || ny < 0 || nx >= MAP_SIZE || ny >= MAP_SIZE) continue;
-          const ni = ny * MAP_SIZE + nx;
-          if (visited[ni]) continue;
-          if (getTile(nx, ny) !== tile) continue;
-          visited[ni] = 1;
-          queue.push([nx, ny]);
-        }
-      }
-
-      if (cells.length < MIN_CLUSTER_SIZE) continue;
-
-      // Centroid in world px
-      const sumX = cells.reduce((s, [x]) => s + x, 0);
-      const sumY = cells.reduce((s, [, y]) => s + y, 0);
-      const cx   = (sumX / cells.length + 0.5) * 32;
-      const cy   = (sumY / cells.length + 0.5) * 32;
-
-      const maxAmount = type === 'wood' ? WOOD_POOL : STONE_POOL;
-      _nodes.push({ id: _nextId++, type, cx, cy, amount: maxAmount, maxAmount, workersActive: 0 });
-    }
+  for (const d of decorations) {
+    const type = d.type === 'tree' ? 'wood' : 'stone';
+    const maxAmount = type === 'wood' ? WOOD_PER_NODE : STONE_PER_NODE;
+    _nodes.push({
+      id: _nextId++,
+      type,
+      tx: d.tx,
+      ty: d.ty,
+      cx: (d.tx + 0.5) * TILE_SIZE,
+      cy: (d.ty + 0.5) * TILE_SIZE,
+      amount: maxAmount,
+      maxAmount,
+      workersActive: 0,
+      depleted: false,
+    });
   }
 
-  console.log(`[ResourceNodes] ${_nodes.filter(n=>n.type==='wood').length} wood clusters, ${_nodes.filter(n=>n.type==='stone').length} stone clusters`);
+  const wood  = _nodes.filter(n => n.type === 'wood').length;
+  const stone = _nodes.filter(n => n.type === 'stone').length;
+  console.log(`[ResourceNodes] ${wood} tree nodes, ${stone} rock nodes`);
 }
 
 // ── Helpers ───────────────────────────────────────────────────
 function _maxWorkers(node) {
-  return node.type === 'wood' ? MAX_WORKERS_WOOD : MAX_WORKERS_STONE;
+  return node.type === 'wood' ? MAX_WORKERS_WOOD : MAX_WORKERS_ROCK;
 }
 
 /** Returns nearest available (non-full, non-empty) node of given type within maxDist px. */
@@ -103,12 +78,19 @@ export function releaseNode(node) {
 }
 
 /**
- * Synchronously deduct `amount` from node on harvest completion.
- * Returns actual amount harvested (may be less if node nearly empty).
+ * Deduct amount from node on harvest completion.
+ * Marks node depleted when empty (decoration disappears from render).
+ * Returns actual amount harvested.
  */
 export function checkAndHarvest(node, amount) {
   if (!node || node.amount <= 0) return 0;
   const actual = Math.min(node.amount, amount);
   node.amount -= actual;
+  if (node.amount <= 0) node.depleted = true;
   return actual;
+}
+
+/** Quick lookup: is there a non-depleted node at tile (tx, ty)? */
+export function getNodeAt(tx, ty) {
+  return _nodes.find(n => n.tx === tx && n.ty === ty && !n.depleted) ?? null;
 }
