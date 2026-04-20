@@ -112,6 +112,23 @@ function _injectStyles() {
       border-bottom: 1px solid #3a2508;
       padding-bottom: 3px;
     }
+    
+    #info-panel .citizen-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    #info-panel .citizen-portrait {
+      border-radius: 50%;
+      flex-shrink: 0;
+      border: 2px solid #6b4420;
+    }
+    #info-panel .citizen-header-text {
+      flex: 1;
+      min-width: 0;
+    }
+
     #info-panel .hp-bar-bg {
       width: 100%;
       height: 8px;
@@ -421,6 +438,7 @@ function _renderBuildingPanel(b) {
     <h2>${def.name ?? b.type}</h2>
     <div class="panel-sub">${stateName}</div>
 
+    
     <div class="panel-section">Health</div>
     <div style="font-size:11px;color:#a07840;margin-bottom:2px;">
       ${Math.ceil(b.hp)} / ${b.maxHp}
@@ -442,6 +460,9 @@ function _renderBuildingPanel(b) {
 
   // Re-attach close button listener (innerHTML replaced it)
   _panel.querySelector('.panel-close').addEventListener('click', closePanel);
+  // Draw portrait
+  const portraitCanvas = _panel.querySelector('#citizen-portrait');
+  if (portraitCanvas && c.drawPortrait) c.drawPortrait(portraitCanvas);
 
   // Blacksmith craft buttons
   _panel.querySelectorAll('.craft-btn:not(.craft-btn-disabled)').forEach(btn => {
@@ -544,13 +565,18 @@ function _renderCitizenPanel(c) {
 
   _panel.innerHTML = `
     <button class="panel-close">✕</button>
-    <h2>${c.name}</h2>
-    <div class="panel-sub" style="margin-bottom:6px;">Citizen</div>
+    <div class="citizen-header">
+      <canvas id="citizen-portrait" width="48" height="48" class="citizen-portrait"></canvas>
+      <div class="citizen-header-text">
+        <h2 style="margin:0 0 2px;">${c.name}</h2>
+        <div class="panel-sub">Citizen</div>
+        <span class="state-badge" style="background:${stateBadgeColour}22;color:${stateBadgeColour};border:1px solid ${stateBadgeColour}66;margin-top:4px;display:inline-block;">
+          ${_describeTask(c)}
+        </span>
+      </div>
+    </div>
 
-    <span class="state-badge" style="background:${stateBadgeColour}22;color:${stateBadgeColour};border:1px solid ${stateBadgeColour}66;">
-      ${_describeTask(c)}
-    </span>
-
+    
     <div class="panel-section">Health</div>
     <div style="font-size:11px;color:#a07840;margin-bottom:2px;">
       ${Math.ceil(c.hp)} / ${hpMax}

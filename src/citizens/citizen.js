@@ -595,6 +595,60 @@ export class Citizen {
     }
 
     ctx.restore();
+  // ── Portrait: draw citizen into a small canvas ──────────────
+  drawPortrait(canvas) {
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    // Background circle
+    ctx.fillStyle = 'rgba(30,18,8,0.85)';
+    ctx.beginPath();
+    ctx.arc(W/2, H/2, W/2 - 1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = this.hatColour;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    const scale = W / 20;
+    ctx.save();
+    ctx.translate(W / 2, H * 0.72);
+    ctx.scale(scale, scale);
+
+    const cx = 0, cy = 0;
+    const bodyW = 8, bodyH = 5, headR = 4;
+    const bodyY  = -bodyH * 0.5 - 2;
+    const headY  = bodyY - bodyH * 0.5 - headR - 0.5;
+    const hatTopY = headY - headR;
+
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = this.shirtColour;
+    ctx.beginPath(); ctx.moveTo(-2.5, bodyY + bodyH*0.4); ctx.lineTo(-2.5, cy + 3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(2.5,  bodyY + bodyH*0.4); ctx.lineTo(2.5,  cy + 3); ctx.stroke();
+
+    ctx.fillStyle = this.shirtColour;
+    ctx.beginPath(); ctx.ellipse(cx, bodyY, bodyW/2, bodyH/2, 0, 0, Math.PI*2); ctx.fill();
+
+    ctx.strokeStyle = this.skinColour;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(-bodyW/2, bodyY); ctx.lineTo(-bodyW/2 - 3, bodyY + 3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(bodyW/2,  bodyY); ctx.lineTo(bodyW/2  + 3, bodyY + 3); ctx.stroke();
+
+    ctx.fillStyle = this.skinColour;
+    ctx.beginPath(); ctx.arc(cx, headY, headR, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.beginPath(); ctx.arc(-1.2, headY - 0.5, 0.8, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(1.2,  headY - 0.5, 0.8, 0, Math.PI*2); ctx.fill();
+
+    ctx.fillStyle = this.hatColour;
+    ctx.beginPath(); ctx.ellipse(cx, hatTopY + 2, headR + 2, 1.5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillRect(cx - headR*0.7, hatTopY - 3, headR*1.4, 5);
+
+    ctx.restore();
+  }
+
   }
 }
 
