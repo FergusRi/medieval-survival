@@ -11,7 +11,7 @@ import { generateMap, getTile, MAP_SIZE, TILE_SIZE, MAP_PX, MAP_SEED } from './w
 import { initResourceNodes } from './world/resource_nodes.js';
 import { initMinimap, drawMinimap } from './ui/minimap.js';
 import { T, TILE_DEF } from './world/tiles.js';
-import { preloadSprites, getTileSprite, getTreeSprite, PINE_TILES } from './sprites/tile_sprites.js';
+import { preloadSprites, getTileSprite, getTreeSprite, getGrassVariant, PINE_TILES } from './sprites/tile_sprites.js';
 import { preloadBuildingSprites } from './sprites/building_sprites.js';
 import { resources, initProduction } from './resources/resources.js';
 import { renderBuildings, drawBuilding, buildingSortY, placedBuildings, updateGhostPos, handleBuildClick, cancelGhost, getGhostType, cycleGhostRotation, destroyBuilding, drawBuildingDamageOverlay } from './buildings/placement.js';
@@ -159,7 +159,6 @@ function render() {
   const tx1 = Math.min(MAP_SIZE, Math.ceil (bottomRight.x / TILE_SIZE));
   const ty1 = Math.min(MAP_SIZE, Math.ceil (bottomRight.y / TILE_SIZE));
 
-  const grassSprite         = getTileSprite(T.GRASS);
   const stoneSprite         = getTileSprite(T.STONE);
   const mountainStoneSprite = getTileSprite(T.MOUNTAIN_STONE);
 
@@ -172,7 +171,8 @@ function render() {
       const py  = ty * TILE_SIZE;
 
       if (id === T.STONE) {
-        if (grassSprite) ctx.drawImage(grassSprite, px, py, TILE_SIZE, TILE_SIZE);
+        const grassBase = getGrassVariant(tx, ty);
+        if (grassBase) ctx.drawImage(grassBase, px, py, TILE_SIZE, TILE_SIZE);
         else { ctx.fillStyle = TILE_DEF[T.GRASS].colour; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE); }
         if (stoneSprite) ctx.drawImage(stoneSprite, px, py, TILE_SIZE, TILE_SIZE);
         continue;
@@ -189,11 +189,17 @@ function render() {
         continue;
       }
 
-      if (id === T.GRASS || id === T.SAND) {
+      if (id === T.GRASS) {
+        const grassV = getGrassVariant(tx, ty);
+        if (grassV) ctx.drawImage(grassV, px, py, TILE_SIZE, TILE_SIZE);
+        else { ctx.fillStyle = def.colour; ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE); }
+        continue;
+      }
+
+      if (id === T.SAND) {
         ctx.fillStyle = def.colour;
         ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
-        const rate = id === T.GRASS ? GRASS_TUFT_RATE : SAND_TUFT_RATE;
-        if (overlayFrac(tx, ty) < rate) {
+        if (overlayFrac(tx, ty) < SAND_TUFT_RATE) {
           const tuft = getTileSprite(id);
           if (tuft) ctx.drawImage(tuft, px, py, TILE_SIZE, TILE_SIZE);
         }
